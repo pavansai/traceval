@@ -34,6 +34,16 @@ concrete walkthrough for each.
   only by a manual, opt-in smoke check (not part of `pytest`/CI) once one
   exists. See the `## Manual smoke-testing a real model` section below if
   you're adding one.
+- **CLI tests must assert against normalized output, not raw `result.output`,
+  and must not depend on terminal detection.** typer/rich color and
+  line-wrap CLI output based on `NO_COLOR`/`TERM`/`COLUMNS`, which can
+  differ between a local dev machine (no TTY, usually plain) and CI
+  (color/width can be forced), splitting a flag name across ANSI spans or
+  line wraps and breaking a plain substring check that happened to pass
+  locally by accident. `tests/conftest.py`'s autouse fixture pins those
+  three env vars for every test; every CLI assertion should additionally go
+  through `normalize_cli_output()` (strips ANSI, collapses whitespace) in
+  `tests/integration/test_end_to_end.py`.
 
 ## Manual smoke-testing a real model
 

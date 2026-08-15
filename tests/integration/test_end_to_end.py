@@ -6,6 +6,7 @@ model-graded scorer is tested against MockProvider as the judge.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -67,6 +68,24 @@ def _write_minimal_trace(
     with TraceWriter(path) as writer:
         writer.write_header(header)
         writer.write_footer(footer)
+
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def normalize_cli_output(output: str) -> str:
+    """Strip ANSI escape codes and collapse whitespace/line-wrapping.
+
+    typer/rich can color-code and line-wrap CLI output depending on
+    terminal detection, splitting a single word or flag across separate
+    ANSI spans or line breaks. Every assertion against `CliRunner` output
+    should go through this rather than checking `result.output` raw, so the
+    assertion doesn't depend on how rich decided to render that particular
+    run (see tests/conftest.py's NO_COLOR/TERM/COLUMNS fixture for the other
+    half of this: making that rendering deterministic in the first place).
+    """
+    plain = _ANSI_ESCAPE_RE.sub("", output)
+    return " ".join(plain.split())
 
 
 def test_oracle_run_produces_valid_trace(tmp_path: Path) -> None:
@@ -307,8 +326,9 @@ def test_cli_run_end_to_end_with_oracle_agent(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "success" in result.output
-    assert "accuracy=100%" in result.output
+    output = normalize_cli_output(result.output)
+    assert "success" in output
+    assert "accuracy=100%" in output
 
     trace_files = list(tmp_path.glob("*.jsonl"))
     assert len(trace_files) == 1
@@ -323,7 +343,7 @@ def test_cli_diff_refuses_different_tasks_by_default(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["diff", str(trace_a), str(trace_b)])
     assert result.exit_code != 0
-    assert "--allow-different-task" in result.output
+    assert "--allow-different-task" in normalize_cli_output(result.output)
 
 
 def test_cli_diff_allows_different_tasks_with_override(tmp_path: Path) -> None:
@@ -336,7 +356,8 @@ def test_cli_diff_allows_different_tasks_with_override(tmp_path: Path) -> None:
     result = runner.invoke(app, ["diff", str(trace_a), str(trace_b), "--allow-different-task"])
     assert result.exit_code == 0, result.output
 
-    data = json.loads(result.output[result.output.index("{") :])
+    output = normalize_cli_output(result.output)
+    data = json.loads(output[output.index("{") :])
     assert data["same_task"] is False
     assert data["header_delta"]["task_hash_changed"] is True
 
@@ -350,4 +371,4 @@ def test_cli_diff_warns_on_different_seed(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["diff", str(trace_a), str(trace_b)])
     assert result.exit_code == 0, result.output
-    assert "WARNING" in result.output
+    assert "WARNING" in normalize_cli_output(result.output)
