@@ -1,0 +1,29 @@
+# Pinned per-token pricing, USD per million tokens.
+#
+# Keyed by provider + the *resolved* model_id (the same string models.yaml
+# resolves an alias to, and the same string stamped into trace headers),
+# never by alias, so a cost report tracks the exact model that ran even
+# after an alias is repointed at a newer pin.
+#
+# Source: Anthropic list pricing as of 2026-08. Sonnet 5 carries an
+# introductory rate through 2026-08-31 ($2/$10); this table uses the
+# standard post-intro rate.
+
+anthropic:
+  claude-sonnet-5:
+    input_per_million_usd: 3.00
+    output_per_million_usd: 15.00
+  claude-opus-5:
+    input_per_million_usd: 5.00
+    output_per_million_usd: 25.00
+  claude-haiku-4-5-20251001:
+    input_per_million_usd: 1.00
+    output_per_million_usd: 5.00
+
+mock:
+  mock-1-20260101:
+    input_per_million_usd: 0.0
+    output_per_million_usd: 0.0
+  mock-judge-1-20260101:
+    input_per_million_usd: 0.0
+    output_per_million_usd: 0.0
