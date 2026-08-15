@@ -129,16 +129,16 @@ the intended fix; not needed for v0.1.0's text-only fixtures.
 `run_task(task, agent, agent_kind, model_under_test, scorers, trace_dir,
 judge_model=None)`:
 
-1. Seed (`runner/seeding.py`, which seeds Python's `random`; the environment
-   seeds itself in `reset()`).
-2. `environment.reset(seed, fixture)`, then write the trace header
-   (including `environment.fingerprint()`).
-3. Loop up to `task.max_steps`: `agent.act(observation, steps)` returns an
+1. `environment.reset(task.seed, fixture)` (the environment seeds itself
+   from this: `browser.py` substitutes a seeded PRNG for `Math.random`
+   before the page loads), then write the trace header (including
+   `environment.fingerprint()`).
+2. Loop up to `task.max_steps`: `agent.act(observation, steps)` returns an
    `AgentStep` (`action`, `usage`, `agent_latency_ms`). If `action` is
    `None`, stop; else `environment.step(action)`, append a `TraceStep`
    carrying both the agent's usage/latency and the environment's own
    step latency, continue.
-4. Run every configured `Scorer` against the trace-so-far, write the
+3. Run every configured `Scorer` against the trace-so-far, write the
    footer, close the environment.
 
 If `reset()`, `step()`, or `agent.act()` raises, the runner still writes a
@@ -151,18 +151,6 @@ swallowed by the harness.
 This is the one place `Environment`, `Agent`, `TraceWriter`, and `Scorer`
 are wired together; adding a new environment or agent kind never touches
 this file.
-
-### Concurrency
-
-The runner is single-threaded and runs one task at a time: `cli/main.py`'s
-`run` command loops over task directories sequentially. `seed_python_random`
-(`runner/seeding.py`) seeds via the process-global `random.seed()`, which is
-safe only under that model: if a future change ran multiple `run_task` calls
-concurrently (threads, `asyncio`, multiprocessing workers sharing state),
-their seed calls would stomp on each other's `random` state and silently
-break oracle/replay determinism. A concurrent runner must switch to a local
-`random.Random(seed)` instance threaded through explicitly rather than the
-global `random.seed()` call.
 
 ## Task / fixture format (`src/traceval/tasks/schema.py`)
 

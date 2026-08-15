@@ -1,6 +1,6 @@
 """Runner: orchestrates a single task run end-to-end.
 
-seed -> env.reset -> bounded agent loop -> trace write -> scorers -> footer.
+env.reset(seed) -> bounded agent loop -> trace write -> scorers -> footer.
 This is the one place that wires `Environment`, `Agent`, `TraceWriter`, and
 `Scorer` together; adding a new environment kind or agent kind never touches
 this file, only the registries/factories each side plugs into.
@@ -20,7 +20,6 @@ from traceval.agents import Agent
 from traceval.environments import Environment, Observation
 from traceval.environments.browser import BrowserEnvironment
 from traceval.providers import ResolvedModel
-from traceval.runner.seeding import seed_python_random
 from traceval.scoring import Scorer
 from traceval.scoring.report import PricingTable
 from traceval.tasks import Task, build_fixture, compute_task_hash
@@ -72,7 +71,6 @@ def run_task(
     run_id: str | None = None,
 ) -> Trace:
     run_id = run_id or uuid.uuid4().hex
-    seed_python_random(task.seed)
 
     environment = build_environment(task)
     fixture = build_fixture(task)

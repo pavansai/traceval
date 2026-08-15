@@ -36,6 +36,7 @@ from traceval.trace import (
 EXAMPLE_TASK_DIR = (
     Path(__file__).resolve().parents[1] / "fixtures" / "tasks" / "example_search_task"
 )
+RANDOM_TASK_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "tasks" / "random_dom_task"
 
 
 def _model() -> ResolvedModel:
@@ -203,6 +204,56 @@ def test_oracle_determinism_across_repeated_runs(tmp_path: Path) -> None:
     normalized = [_normalize(t) for t in traces]
 
     assert normalized[0] == normalized[1] == normalized[2]
+
+
+def _run_random_dom_task(seed: int, run_id: str, trace_dir: Path) -> str:
+    """Run random_dom_task and return the #rand div's rendered text.
+
+    That div is set by the fixture page's own `Math.random()` call, so its
+    value is only reproducible/seed-sensitive if browser.py's seeded-PRNG
+    init script is actually substituting `Math.random` before the page
+    loads. Unlike example_search_task (a static page with no randomness at
+    all), this task fails loudly if that substitution ever regresses.
+    """
+    task = load_task(RANDOM_TASK_DIR)
+    task.seed = seed
+    trace = run_task(
+        task=task,
+        agent=OracleAgent(RANDOM_TASK_DIR / "scripted_trajectory.jsonl"),
+        agent_kind=AgentKind.ORACLE,
+        model_under_test=_model(),
+        scorers=[],
+        trace_dir=trace_dir,
+        run_id=run_id,
+    )
+    assert len(trace.steps) == 1
+    value = trace.steps[0].observation["elements"]["#rand"]
+    assert value  # sanity: the script actually rendered something
+    return value
+
+
+def test_seeded_randomness_reproducible_across_runs(tmp_path: Path) -> None:
+    """Positive case: same seed, N runs, identical Math.random() output.
+
+    Fails if the seeded-PRNG substitution in browser.py breaks (e.g. the
+    init script stops running, or Math.random reverts to the real one).
+    """
+    values = [
+        _run_random_dom_task(seed=42, run_id=f"rand-same-{i}", trace_dir=tmp_path) for i in range(3)
+    ]
+    assert values[0] == values[1] == values[2]
+
+
+def test_different_seeds_produce_different_randomness(tmp_path: Path) -> None:
+    """Negative control for the test above: different seeds must produce
+    different Math.random() output. Without this, the positive test alone
+    can't distinguish "seeding actually works" from "seeding is a no-op and
+    Math.random always returns the same thing anyway" (it doesn't, but nothing
+    else in this suite would catch it if it started to).
+    """
+    value_a = _run_random_dom_task(seed=1, run_id="rand-a", trace_dir=tmp_path)
+    value_b = _run_random_dom_task(seed=2, run_id="rand-b", trace_dir=tmp_path)
+    assert value_a != value_b
 
 
 def test_oracle_run_ends_at_trajectory_end_not_max_steps(tmp_path: Path) -> None:
