@@ -1,0 +1,23 @@
+# Pinned model-version registry.
+#
+# Aliases (used in task.yaml / CLI --model / --judge-model flags) resolve to
+# an exact version string here. Bumping a pin is a one-line, reviewable diff;
+# resolve_model() never asks a provider to resolve its own "latest" alias.
+#
+# Note: current-generation Anthropic models (Sonnet 5, Opus 5) publish only a
+# bare, undated model ID; there is no separate dated snapshot to pin to, so
+# alias and model_id are identical for those entries. Haiku 4.5 does have a
+# distinct dated ID; that's the case this registry exists to capture, and the
+# one to follow when Anthropic ships a dated Sonnet/Opus 5 snapshot later.
+
+anthropic:
+  claude-sonnet-5: "claude-sonnet-5"
+  claude-opus-5: "claude-opus-5"
+  claude-haiku-4-5: "claude-haiku-4-5-20251001"
+
+openai:
+  gpt-5: "gpt-5"  # placeholder alias; OpenAIProvider.generate() is unimplemented
+
+mock:
+  mock-1: "mock-1-20260101"
+  mock-judge: "mock-judge-1-20260101"
