@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Search Fixture</title>
+  </head>
+  <body>
+    <input id="query" type="text" />
+    <button id="search" type="button">Search</button>
+    <div id="result"></div>
+    <script>
+      document.getElementById("search").addEventListener("click", function () {
+        var q = document.getElementById("query").value;
+        document.getElementById("result").textContent = "found: " + q;
+      });
+    </script>
+  </body>
+</html>

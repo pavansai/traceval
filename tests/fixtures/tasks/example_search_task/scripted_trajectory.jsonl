@@ -1,0 +1,2 @@
+{"expect": {"elements": {"#query": "", "#result": ""}}, "action": {"kind": "type", "target": "#query", "value": "playwright"}}
+{"expect": {"elements": {"#query": "playwright", "#result": ""}}, "action": {"kind": "click", "target": "#search"}}
