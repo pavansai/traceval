@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Todo Fixture</title>
+  </head>
+  <body>
+    <input id="item" type="text" />
+    <button id="add" type="button">Add</button>
+    <ul id="list"></ul>
+    <script>
+      document.getElementById("add").addEventListener("click", function () {
+        var v = document.getElementById("item").value;
+        var li = document.createElement("li");
+        li.textContent = v;
+        document.getElementById("list").appendChild(li);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Login Fixture</title>
+  </head>
+  <body>
+    <input id="username" type="text" />
+    <button id="submit" type="button">Submit</button>
+    <div id="status"></div>
+    <script>
+      document.getElementById("submit").addEventListener("click", function () {
+        var u = document.getElementById("username").value;
+        document.getElementById("status").textContent = "welcome, " + u;
+      });
+    </script>
+  </body>
+</html>

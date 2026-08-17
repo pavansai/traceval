@@ -1,0 +1,22 @@
+id: feedback_form
+format_version: 1
+seed: 303
+max_steps: 5
+
+environment:
+  kind: browser
+  config:
+    fixture_file: fixture.html
+    observe_selectors: ["#feedback", "#status"]
+    viewport: { width: 1280, height: 800 }
+    locale: en-US
+    timezone_id: UTC
+
+fixture_files:
+  - fixture.html
+  - scripted_trajectory.jsonl
+
+scorers:
+  - kind: model_graded
+    config:
+      rubric_prompt: "Did the agent type positive feedback into the textarea and click submit?"

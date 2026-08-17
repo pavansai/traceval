@@ -1,0 +1,2 @@
+{"expect": {"elements": {"#feedback": "", "#status": ""}}, "action": {"kind": "type", "target": "#feedback", "value": "Great product, very useful!"}}
+{"action": {"kind": "click", "target": "#submit"}}

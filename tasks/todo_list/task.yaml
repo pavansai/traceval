@@ -1,0 +1,33 @@
+id: todo_list
+format_version: 1
+seed: 202
+max_steps: 5
+
+environment:
+  kind: browser
+  config:
+    fixture_file: fixture.html
+    observe_selectors: ["#item", "#list"]
+    viewport: { width: 1280, height: 800 }
+    locale: en-US
+    timezone_id: UTC
+
+fixture_files:
+  - fixture.html
+  - scripted_trajectory.jsonl
+
+scorers:
+  - kind: rubric
+    config:
+      criteria:
+        - name: typed_item
+          weight: 1.0
+          check: action_occurred
+          action_kind: type
+          target: "#item"
+          value_contains: milk
+        - name: clicked_add
+          weight: 1.0
+          check: action_occurred
+          action_kind: click
+          target: "#add"

@@ -1,0 +1,2 @@
+{"expect": {"elements": {"#item": "", "#list": ""}}, "action": {"kind": "type", "target": "#item", "value": "milk"}}
+{"expect": {"elements": {"#item": "milk", "#list": ""}}, "action": {"kind": "click", "target": "#add"}}

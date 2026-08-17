@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Feedback Fixture</title>
+  </head>
+  <body>
+    <textarea id="feedback"></textarea>
+    <button id="submit" type="button">Submit</button>
+    <div id="status"></div>
+    <script>
+      document.getElementById("submit").addEventListener("click", function () {
+        document.getElementById("status").textContent = "thank you for your feedback";
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+id: login_form
+format_version: 1
+seed: 101
+max_steps: 5
+
+environment:
+  kind: browser
+  config:
+    fixture_file: fixture.html
+    observe_selectors: ["#username", "#status"]
+    viewport: { width: 1280, height: 800 }
+    locale: en-US
+    timezone_id: UTC
+
+fixture_files:
+  - fixture.html
+  - scripted_trajectory.jsonl
+
+expected: "welcome, alice"
+
+scorers:
+  - kind: exact_match
+    config:
+      target: "#status"
+      expected: "welcome, alice"

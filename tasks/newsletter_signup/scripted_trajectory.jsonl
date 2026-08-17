@@ -1,0 +1,2 @@
+{"expect": {"elements": {"#email": "", "#status": ""}}, "action": {"kind": "type", "target": "#email", "value": "reader@example.com"}}
+{"expect": {"elements": {"#email": "reader@example.com", "#status": ""}}, "action": {"kind": "click", "target": "#subscribe"}}

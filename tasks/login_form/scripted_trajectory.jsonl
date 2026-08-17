@@ -1,0 +1,2 @@
+{"expect": {"elements": {"#username": "", "#status": ""}}, "action": {"kind": "type", "target": "#username", "value": "alice"}}
+{"expect": {"elements": {"#username": "alice", "#status": ""}}, "action": {"kind": "click", "target": "#submit"}}

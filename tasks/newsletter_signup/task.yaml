@@ -1,0 +1,39 @@
+id: newsletter_signup
+format_version: 1
+seed: 404
+max_steps: 5
+
+environment:
+  kind: browser
+  config:
+    fixture_file: fixture.html
+    observe_selectors: ["#email", "#status"]
+    viewport: { width: 1280, height: 800 }
+    locale: en-US
+    timezone_id: UTC
+
+fixture_files:
+  - fixture.html
+  - scripted_trajectory.jsonl
+
+expected: "subscribed: reader@example.com"
+
+scorers:
+  - kind: exact_match
+    config:
+      target: "#status"
+      expected: "subscribed: reader@example.com"
+  - kind: rubric
+    config:
+      criteria:
+        - name: typed_email
+          weight: 1.0
+          check: action_occurred
+          action_kind: type
+          target: "#email"
+          value_contains: reader@example.com
+        - name: clicked_subscribe
+          weight: 1.0
+          check: action_occurred
+          action_kind: click
+          target: "#subscribe"

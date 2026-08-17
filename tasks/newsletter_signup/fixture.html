@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Newsletter Signup Fixture</title>
+  </head>
+  <body>
+    <input id="email" type="text" />
+    <button id="subscribe" type="button">Subscribe</button>
+    <div id="status"></div>
+    <script>
+      document.getElementById("subscribe").addEventListener("click", function () {
+        var e = document.getElementById("email").value;
+        document.getElementById("status").textContent = "subscribed: " + e;
+      });
+    </script>
+  </body>
+</html>
