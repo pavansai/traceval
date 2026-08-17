@@ -151,13 +151,35 @@ def run_task(
 
         assert header is not None  # set on every path above, error or not
 
+        scores: list[ScoreResult] = []
+        scorer_errors: list[TraceError] = []
         if error is not None:
-            scores: list[ScoreResult] = []
             outcome = Outcome.ERROR
         else:
             trace_so_far = Trace(header=header, steps=steps, footer=None)
-            scores = [scorer.score(task, trace_so_far) for scorer in scorers]
-            outcome = Outcome.SUCCESS if all(s.passed for s in scores) else Outcome.FAILURE
+            # Each scorer runs in its own try/except: one scorer failing
+            # (e.g. an unparseable judge response) must not discard scores
+            # that other scorers already produced, and must not stop later
+            # scorers from still running.
+            for scorer in scorers:
+                try:
+                    scores.append(scorer.score(task, trace_so_far))
+                except Exception as exc:
+                    scorer_errors.append(
+                        TraceError(
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                            scorer=type(scorer).__name__,
+                        )
+                    )
+                    if caught is None:
+                        caught = exc
+            if scorer_errors:
+                # Can't claim SUCCESS or FAILURE without complete scoring,
+                # even if every other scorer passed.
+                outcome = Outcome.ERROR
+            else:
+                outcome = Outcome.SUCCESS if all(s.passed for s in scores) else Outcome.FAILURE
 
         totals = TraceTotals(
             input_tokens=sum(s.input_tokens for s in steps),
@@ -171,6 +193,7 @@ def run_task(
             scores=scores,
             totals=totals,
             error=error,
+            scorer_errors=scorer_errors,
             ended_at=datetime.now(UTC),
         )
         writer.write_footer(footer)

@@ -20,7 +20,7 @@ from traceval.providers import ResolvedModel
 from traceval.runner import runner as runner_module
 from traceval.runner.runner import run_task
 from traceval.tasks import Task, TaskFixture, load_task
-from traceval.trace import AgentKind, Outcome, TraceStep, read_trace
+from traceval.trace import AgentKind, Outcome, ScoreResult, Trace, TraceStep, read_trace
 
 
 class FakeEnvironment:
@@ -59,6 +59,22 @@ class FakeAgent:
         step = self._steps[self._index]
         self._index += 1
         return step
+
+
+class PassingScorer:
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def score(self, task: Task, trace: Trace) -> ScoreResult:
+        return ScoreResult(scorer=self._name, score=1.0, passed=True)
+
+
+class RaisingScorer:
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def score(self, task: Task, trace: Trace) -> ScoreResult:
+        raise self._exc
 
 
 @pytest.fixture(autouse=True)
@@ -193,3 +209,100 @@ def test_header_stamps_traceval_version_and_pricing_snapshot(tmp_path: Path) -> 
     assert trace.header.pricing_snapshot is not None
     assert trace.header.pricing_snapshot.input_per_million_usd == 0.0
     assert trace.header.pricing_snapshot.output_per_million_usd == 0.0
+
+
+def test_scorer_failure_produces_readable_error_trace(tmp_path: Path) -> None:
+    task = _make_task(tmp_path / "task")
+    trace_dir = tmp_path / "runs"
+    scorer = RaisingScorer(ValueError("judge returned 429"))
+
+    with pytest.raises(ValueError, match="judge returned 429"):
+        run_task(
+            task=task,
+            agent=FakeAgent([]),
+            agent_kind=AgentKind.ORACLE,
+            model_under_test=_model(),
+            scorers=[scorer],
+            trace_dir=trace_dir,
+        )
+
+    trace_files = list(trace_dir.glob("*.jsonl"))
+    assert len(trace_files) == 1
+    trace = read_trace(trace_files[0])
+    assert trace.footer is not None
+    assert trace.footer.outcome == Outcome.ERROR
+    assert trace.footer.error is None  # the run itself completed fine
+    assert len(trace.footer.scorer_errors) == 1
+    assert trace.footer.scorer_errors[0].error_type == "ValueError"
+    assert "429" in trace.footer.scorer_errors[0].error_message
+
+
+def test_failing_scorer_does_not_discard_passing_scorers(tmp_path: Path) -> None:
+    task = _make_task(tmp_path / "task")
+    trace_dir = tmp_path / "runs"
+    scorers = [
+        PassingScorer("exact_match"),
+        RaisingScorer(RuntimeError("judge unparseable")),
+        PassingScorer("rubric"),
+    ]
+
+    with pytest.raises(RuntimeError, match="judge unparseable"):
+        run_task(
+            task=task,
+            agent=FakeAgent([]),
+            agent_kind=AgentKind.ORACLE,
+            model_under_test=_model(),
+            scorers=scorers,
+            trace_dir=trace_dir,
+        )
+
+    trace_files = list(trace_dir.glob("*.jsonl"))
+    trace = read_trace(trace_files[0])
+    assert trace.footer is not None
+    assert trace.footer.outcome == Outcome.ERROR
+    # Both passing scorers ran and their results survived the sibling
+    # scorer's failure — the middle scorer raising didn't stop the third
+    # from being attempted, and didn't discard the first's result.
+    assert {s.scorer for s in trace.footer.scores} == {"exact_match", "rubric"}
+    assert all(s.passed for s in trace.footer.scores)
+    assert len(trace.footer.scorer_errors) == 1
+
+
+def test_scorer_error_names_the_failing_scorer(tmp_path: Path) -> None:
+    trace_dir = tmp_path / "runs"
+
+    # A different failing scorer identity must produce a different recorded
+    # name, ruling out a hardcoded/constant attribution.
+    class ADifferentlyNamedScorer:
+        def score(self, task: Task, trace: Trace) -> ScoreResult:
+            raise RuntimeError("boom-b")
+
+    task_a = _make_task(tmp_path / "task-a")
+    with pytest.raises(RuntimeError, match="boom-a"):
+        run_task(
+            task=task_a,
+            agent=FakeAgent([]),
+            agent_kind=AgentKind.ORACLE,
+            model_under_test=_model(),
+            scorers=[PassingScorer("exact_match"), RaisingScorer(RuntimeError("boom-a"))],
+            trace_dir=trace_dir,
+            run_id="scorer-name-a",
+        )
+    trace_a = read_trace(trace_dir / "scorer-name-a.jsonl")
+    assert trace_a.footer is not None
+    assert trace_a.footer.scorer_errors[0].scorer == "RaisingScorer"
+
+    task_b = _make_task(tmp_path / "task-b")
+    with pytest.raises(RuntimeError, match="boom-b"):
+        run_task(
+            task=task_b,
+            agent=FakeAgent([]),
+            agent_kind=AgentKind.ORACLE,
+            model_under_test=_model(),
+            scorers=[ADifferentlyNamedScorer()],
+            trace_dir=trace_dir,
+            run_id="scorer-name-b",
+        )
+    trace_b = read_trace(trace_dir / "scorer-name-b.jsonl")
+    assert trace_b.footer is not None
+    assert trace_b.footer.scorer_errors[0].scorer == "ADifferentlyNamedScorer"

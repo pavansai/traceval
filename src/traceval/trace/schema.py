@@ -90,17 +90,32 @@ class TraceTotals(BaseModel):
 
 
 class TraceError(BaseModel):
+    """`scorer` is set only when this error came from a specific
+    `Scorer.score()` call (its class name); `None` for a
+    reset()/step()/agent.act() failure, which aborts the run before scoring
+    is even attempted.
+    """
+
     error_type: str
     error_message: str
+    scorer: str | None = None
 
 
 class TraceFooter(BaseModel):
+    """`error` is set when reset()/step()/agent.act() raised, aborting the
+    run before any scorer ran. `scorer_errors` is set when the run itself
+    completed but one or more scorers raised; scorers that succeeded despite
+    a sibling scorer's failure still land in `scores`. The two are mutually
+    exclusive: if the run never completed, scoring was never attempted.
+    """
+
     type: Literal["footer"] = "footer"
     outcome: Outcome
     total_steps: int
     scores: list[ScoreResult] = Field(default_factory=list)
     totals: TraceTotals
     error: TraceError | None = None
+    scorer_errors: list[TraceError] = Field(default_factory=list)
     ended_at: datetime
 
 

@@ -141,12 +141,17 @@ judge_model=None)`:
 3. Run every configured `Scorer` against the trace-so-far, write the
    footer, close the environment.
 
-If `reset()`, `step()`, or `agent.act()` raises, the runner still writes a
-complete trace: a header (using a `"unavailable"` environment fingerprint if
-the exception happened before `reset()` returned one) and a footer with
-`outcome=error` and the exception's type/message in `TraceFooter.error`,
-then re-raises, so the failure is both visible in the trace and not
-swallowed by the harness.
+If `reset()`, `step()`, `agent.act()`, or a `Scorer` raises, the runner still
+writes a complete trace: a header (using a `"unavailable"` environment
+fingerprint if the exception happened before `reset()` returned one) and a
+footer with `outcome=error` and the exception's type/message in
+`TraceFooter.error` (keeping whatever scores did complete, if the failure was
+a later scorer in the list), then re-raises, so the failure is both visible
+in the trace and not swallowed by the harness. A batched `cli run` over
+multiple tasks still aborts the whole batch on any one task's exception —
+there's no per-task isolation at the CLI loop level — but at least every task
+attempted so far leaves a complete, readable trace rather than a footer-less
+one.
 
 This is the one place `Environment`, `Agent`, `TraceWriter`, and `Scorer`
 are wired together; adding a new environment or agent kind never touches
