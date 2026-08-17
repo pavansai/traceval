@@ -9,16 +9,20 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
 from traceval.agents.live import LiveAgent
 from traceval.agents.oracle import OracleAgent
 from traceval.agents.replay import ReplayAgent
 from traceval.cli.main import app
+from traceval.environments import Action, Observation, StepResult
 from traceval.providers import ResolvedModel
 from traceval.providers.mock_provider import MockProvider
 from traceval.runner import run_task
+from traceval.runner import runner as runner_module
 from traceval.scoring import ExactMatchScorer, ModelGradedScorer, RubricScorer, build_report
 from traceval.tasks import ScorerConfig, load_task
 from traceval.trace import (
@@ -423,3 +427,75 @@ def test_cli_diff_warns_on_different_seed(tmp_path: Path) -> None:
     result = runner.invoke(app, ["diff", str(trace_a), str(trace_b)])
     assert result.exit_code == 0, result.output
     assert "WARNING" in normalize_cli_output(result.output)
+
+
+class _BatchTestEnvironment:
+    """Registered as env kind 'cli_batch_fake' — deliberately fails in
+    reset() when configured to, for testing that `traceval run` continues a
+    multi-task batch past one task's failure rather than aborting it.
+    """
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._should_fail = bool(config.get("should_fail", False))
+
+    def reset(self, seed: int, fixture: object) -> Observation:
+        if self._should_fail:
+            raise RuntimeError("deliberate failure for batch-continuation test")
+        return Observation(url="fake://start", title="start", elements={})
+
+    def step(self, action: Action) -> StepResult:
+        raise NotImplementedError
+
+    def fingerprint(self) -> str:
+        return "sha256:batchtest"
+
+    def close(self) -> None:
+        pass
+
+
+def test_cli_run_continues_batch_when_middle_task_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(
+        runner_module._ENVIRONMENT_FACTORIES, "cli_batch_fake", _BatchTestEnvironment
+    )
+
+    task_set = tmp_path / "task_set"
+    for name, should_fail in [("task_a", False), ("task_b", True), ("task_c", False)]:
+        task_dir = task_set / name
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.yaml").write_text(
+            f"id: {name}\n"
+            "seed: 1\n"
+            "max_steps: 5\n"
+            "environment:\n"
+            "  kind: cli_batch_fake\n"
+            f"  config: {{should_fail: {str(should_fail).lower()}}}\n"
+        )
+        (task_dir / "scripted_trajectory.jsonl").write_text("")
+
+    trace_dir = tmp_path / "runs"
+    runner = CliRunner()
+    result = runner.invoke(
+        app, ["run", str(task_set), "--agent", "oracle", "--trace-dir", str(trace_dir)]
+    )
+
+    output = normalize_cli_output(result.output)
+    assert "task_a" in output
+    assert "task_b" in output
+    assert "task_c" in output
+    assert "success=2" in output
+    assert "error=1" in output
+
+    trace_files = sorted(trace_dir.glob("*.jsonl"))
+    assert len(trace_files) == 3
+    traces_by_task = {t.header.task_id: t for t in (read_trace(p) for p in trace_files)}
+
+    assert traces_by_task["task_a"].footer is not None
+    assert traces_by_task["task_a"].footer.outcome == Outcome.SUCCESS
+    assert traces_by_task["task_b"].footer is not None
+    assert traces_by_task["task_b"].footer.outcome == Outcome.ERROR
+    assert traces_by_task["task_b"].footer.error is not None
+    assert traces_by_task["task_b"].footer.error.error_type == "RuntimeError"
+    assert traces_by_task["task_c"].footer is not None
+    assert traces_by_task["task_c"].footer.outcome == Outcome.SUCCESS

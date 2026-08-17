@@ -7,6 +7,7 @@ logic lives in those modules so it stays testable without going through argv.
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import typer
@@ -91,7 +92,11 @@ def _discover_task_dirs(path: Path) -> list[Path]:
 
 
 def _print_report(report: TaskSetReport) -> None:
-    typer.echo(f"runs: {report.run_count}")
+    typer.echo(
+        f"runs: {report.run_count} "
+        f"(success={report.success_count} failure={report.failure_count} "
+        f"error={report.error_count})"
+    )
     for name in sorted(report.accuracy_by_scorer):
         accuracy = report.accuracy_by_scorer[name]
         mean_score = report.mean_score_by_scorer[name]
@@ -146,18 +151,41 @@ def run(
             agent, task_dir, replay_trace, provider_instance, resolved_model
         )
         scorers = _build_scorers(task, judge_provider_instance, judge_resolved)
-        trace = run_task(
-            task=task,
-            agent=agent_instance,
-            agent_kind=agent,
-            model_under_test=resolved_model,
-            scorers=scorers,
-            trace_dir=trace_dir,
-            judge_model=judge_resolved,
-        )
+        # A known run_id up front means the trace path is knowable even if
+        # run_task raises, so one task erroring doesn't abort the rest of
+        # the batch: run_task always writes a complete trace before
+        # re-raising (see docs/architecture.md's runner error-handling
+        # section), so we can read that trace back and move on.
+        run_id = uuid.uuid4().hex
+        trace_path = trace_dir / f"{run_id}.jsonl"
+        try:
+            trace = run_task(
+                task=task,
+                agent=agent_instance,
+                agent_kind=agent,
+                model_under_test=resolved_model,
+                scorers=scorers,
+                trace_dir=trace_dir,
+                judge_model=judge_resolved,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            try:
+                trace = read_trace(trace_path)
+            except FileNotFoundError:
+                # The failure happened before run_task ever opened its
+                # TraceWriter (e.g. an unknown environment kind), so no trace
+                # exists to fall back to. Report and move on regardless.
+                typer.echo(
+                    f"{task.id}: error ({type(exc).__name__}: {exc}) -> no trace written",
+                    err=True,
+                )
+                continue
+            typer.echo(f"{task.id}: error ({type(exc).__name__}: {exc}) -> {trace_path}", err=True)
+        else:
+            outcome = trace.footer.outcome.value if trace.footer else "unknown"
+            typer.echo(f"{task.id}: {outcome} -> {trace_dir / (trace.header.run_id + '.jsonl')}")
         traces.append(trace)
-        outcome = trace.footer.outcome.value if trace.footer else "unknown"
-        typer.echo(f"{task.id}: {outcome} -> {trace_dir / (trace.header.run_id + '.jsonl')}")
 
     _print_report(build_report(traces))
 

@@ -20,6 +20,7 @@ from traceval.trace import (
     PricingSnapshot,
     ScoreResult,
     Trace,
+    TraceError,
     TraceFooter,
     TraceHeader,
     TraceStep,
@@ -222,3 +223,46 @@ def test_report_cost_uses_stamped_pricing_snapshot_not_live_pricing_table(
     # (10/1e6 * 10) + (5/1e6 * 20) = 0.0001 + 0.0001, from the stamped
     # snapshot, not live_pricing_now's 999.0 rates.
     assert report.total_cost_usd == pytest.approx(0.0002)
+
+
+def _error_footer() -> TraceFooter:
+    return TraceFooter(
+        outcome=Outcome.ERROR,
+        total_steps=1,
+        scores=[],
+        totals=TraceTotals(
+            input_tokens=0, output_tokens=0, agent_latency_ms=0.0, env_latency_ms=0.0
+        ),
+        scorer_errors=[
+            TraceError(
+                error_type="JudgeResponseError",
+                error_message="judge response did not start with PASS/FAIL",
+                scorer="ModelGradedScorer",
+            )
+        ],
+        ended_at=datetime.now(UTC),
+    )
+
+
+def test_report_distinguishes_success_failure_and_error(tmp_path: Path) -> None:
+    """A task set with one of each outcome must not fold ERROR into FAILURE,
+    and must not drop it from run_count without saying so.
+    """
+    pricing_path = tmp_path / "pricing.yaml"
+    pricing_path.write_text("mock: {}\n")
+    pricing = PricingTable.load(pricing_path)
+
+    trace_success = Trace(header=_header(), steps=[], footer=_footer(True))
+    trace_failure = Trace(header=_header(), steps=[], footer=_footer(False))
+    trace_error = Trace(header=_header(), steps=[], footer=_error_footer())
+
+    report = build_report([trace_success, trace_failure, trace_error], pricing=pricing)
+
+    assert report.run_count == 3
+    assert report.success_count == 1
+    assert report.failure_count == 1
+    assert report.error_count == 1
+    # The errored trace contributed no exact_match score at all (neither a
+    # pass nor a silent fail): only the success/failure traces' real
+    # exact_match results count toward its accuracy.
+    assert report.accuracy_by_scorer["exact_match"] == pytest.approx(0.5)

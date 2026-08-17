@@ -10,6 +10,12 @@ same value stamped into the trace header, never an alias. A model absent
 from the pricing table (e.g. the `mock` provider with no entry, or a
 not-yet-priced model) makes `total_cost_usd` `None` rather than silently
 reporting a wrong number.
+
+`run_count` includes every trace passed in, regardless of outcome;
+`success_count`/`failure_count`/`error_count` break that same total down
+explicitly rather than folding ERROR traces into FAILURE (a scorer that
+never got to render a verdict is not the same as one that did and said no)
+or excluding them from `run_count` silently.
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ import yaml
 from pydantic import BaseModel
 
 from traceval.paths import find_repo_file
-from traceval.trace import Trace
+from traceval.trace import Outcome, Trace
 
 
 class ModelPricing(BaseModel):
@@ -68,6 +74,9 @@ class PricingTable:
 
 class TaskSetReport(BaseModel):
     run_count: int
+    success_count: int
+    failure_count: int
+    error_count: int
     accuracy_by_scorer: dict[str, float]
     mean_score_by_scorer: dict[str, float]
     agent_latency_ms_p50: float
@@ -91,10 +100,19 @@ def build_report(traces: list[Trace], pricing: PricingTable | None = None) -> Ta
     total_output = 0
     total_cost = 0.0
     any_cost_known = False
+    success_count = 0
+    failure_count = 0
+    error_count = 0
 
     for trace in traces:
         if trace.footer is None:
             continue
+        if trace.footer.outcome == Outcome.SUCCESS:
+            success_count += 1
+        elif trace.footer.outcome == Outcome.FAILURE:
+            failure_count += 1
+        elif trace.footer.outcome == Outcome.ERROR:
+            error_count += 1
         agent_latencies.append(trace.footer.totals.agent_latency_ms)
         env_latencies.append(trace.footer.totals.env_latency_ms)
         total_input += trace.footer.totals.input_tokens
@@ -132,6 +150,9 @@ def build_report(traces: list[Trace], pricing: PricingTable | None = None) -> Ta
     sorted_env_latencies = sorted(env_latencies)
     return TaskSetReport(
         run_count=len(traces),
+        success_count=success_count,
+        failure_count=failure_count,
+        error_count=error_count,
         accuracy_by_scorer={
             name: scorer_pass_counts.get(name, 0) / count for name, count in scorer_counts.items()
         },
