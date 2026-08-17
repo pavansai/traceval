@@ -5,6 +5,7 @@ from traceval.tasks import build_fixture, compute_task_hash, load_task
 EXAMPLE_TASK_DIR = (
     Path(__file__).resolve().parents[1] / "fixtures" / "tasks" / "example_search_task"
 )
+FEEDBACK_FORM_TASK_DIR = Path(__file__).resolve().parents[2] / "tasks" / "feedback_form"
 
 
 def test_load_task_parses_fields() -> None:
@@ -15,6 +16,12 @@ def test_load_task_parses_fields() -> None:
     assert task.environment.config["fixture_file"] == "fixture.html"
     assert {s.kind for s in task.scorers} == {"exact_match", "rubric"}
     assert task.expected == "found: playwright"
+    assert task.requires_live_judge is False
+
+
+def test_load_task_parses_requires_live_judge() -> None:
+    task = load_task(FEEDBACK_FORM_TASK_DIR)
+    assert task.requires_live_judge is True
 
 
 def test_build_fixture_resolves_paths() -> None:

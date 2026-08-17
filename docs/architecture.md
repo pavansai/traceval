@@ -89,7 +89,10 @@ class Scorer(Protocol):
   trace footers across a set of traces into per-scorer accuracy/mean-score,
   agent/env p50/p95 latency, and total token cost (via `pricing.yaml`, keyed by the
   resolved `model_id`; cost is `None`, not silently wrong, for an unpriced
-  model).
+  model). `run_count` includes every trace regardless of outcome;
+  `success_count`/`failure_count`/`error_count` break that same total down
+  explicitly rather than folding an errored (unscored) task into either
+  category or excluding it from `run_count` silently.
 
 ## Trace schema (`src/traceval/trace/schema.py`)
 
@@ -107,9 +110,12 @@ refuses to load a trace whose `schema_version` it doesn't recognize.
   `agent_latency_ms` (time inside `agent.act()`, i.e. the model call for
   `live`), `env_latency_ms` (time inside `environment.step()`), `timestamp`.
 - **Footer**: `outcome` (`success` | `failure` | `error`), `total_steps`,
-  `scores` (list of `ScoreResult`), `totals` (summed tokens and both
-  latencies), `error` (`TraceError | None`: `error_type` +
-  `error_message`, set when `outcome` is `error`), `ended_at`.
+  `scores` (list of `ScoreResult`, only the scorers that completed), `totals`
+  (summed tokens and both latencies), `error` (`TraceError | None`:
+  `error_type` + `error_message`, set when `reset()`/`step()`/`agent.act()`
+  raised before scoring was ever attempted), `scorer_errors` (list of
+  `TraceError`, one per `Scorer` that raised; `TraceError.scorer` names it by
+  class), `ended_at`.
 
 The writer flushes after every line, so a crashed run leaves a usable
 partial trace (header + whatever steps completed) rather than nothing.
@@ -141,17 +147,28 @@ judge_model=None)`:
 3. Run every configured `Scorer` against the trace-so-far, write the
    footer, close the environment.
 
-If `reset()`, `step()`, `agent.act()`, or a `Scorer` raises, the runner still
-writes a complete trace: a header (using a `"unavailable"` environment
-fingerprint if the exception happened before `reset()` returned one) and a
-footer with `outcome=error` and the exception's type/message in
-`TraceFooter.error` (keeping whatever scores did complete, if the failure was
-a later scorer in the list), then re-raises, so the failure is both visible
-in the trace and not swallowed by the harness. A batched `cli run` over
-multiple tasks still aborts the whole batch on any one task's exception —
-there's no per-task isolation at the CLI loop level — but at least every task
-attempted so far leaves a complete, readable trace rather than a footer-less
-one.
+If `reset()`, `step()`, or `agent.act()` raises, the runner still writes a
+complete trace: a header (using a `"unavailable"` environment fingerprint if
+the exception happened before `reset()` returned one) and a footer with
+`outcome=error` and the exception's type/message in `TraceFooter.error`, then
+re-raises. Scorers are different: each `Scorer.score()` call runs in its own
+try/except, so one scorer raising (e.g. an unparseable judge response) never
+discards another scorer's result and never stops later scorers from still
+running: `scores` keeps every scorer that completed, `scorer_errors` records
+every one that didn't (by class name), and `outcome=error` is set if
+`scorer_errors` is non-empty even when every other scorer passed, since
+incomplete scoring can't be claimed as success or failure. Either way the
+runner re-raises afterward, so the failure is both visible in the trace and
+not swallowed by the harness.
+
+`cli run`'s batch loop (`src/traceval/cli/main.py`) catches per task: a known
+`run_id` is generated before calling `run_task`, so if it raises, the CLI
+re-reads the trace `run_task` already wrote (guaranteed complete per above)
+and continues to the next task rather than aborting the whole batch. `run`
+exits nonzero if any task's outcome was `error` (`--exit-zero-on-error`
+restores the old always-exit-0 behavior): a task that never got scored is
+not the same as one that failed, and a harness that exits 0 either way would
+silently green a CI pipeline on an unscored task.
 
 This is the one place `Environment`, `Agent`, `TraceWriter`, and `Scorer`
 are wired together; adding a new environment or agent kind never touches
@@ -162,9 +179,17 @@ this file.
 A task is a directory with `task.yaml` plus whatever fixture files it
 references (`fixture_files: [...]`). `task.yaml` fields: `id`, `seed`,
 `environment` (`kind` + kind-specific `config`), `max_steps`, `scorers`
-(list of `{kind, config}`), `expected` (used by `exact_match`). See
+(list of `{kind, config}`), `expected` (used by `exact_match`),
+`requires_live_judge` (default `false`; see below). See
 `tests/fixtures/tasks/example_search_task/task.yaml` for a complete
 example, including the `rubric` scorer's `action_occurred` criteria.
+
+A `model_graded` task set `requires_live_judge: true` when a canned mock
+judge verdict would only ever rubber-stamp a pass rather than actually
+judging anything (see `tasks/feedback_form/task.yaml`). `cli run` skips such
+a task, rather than running and erroring it or faking a pass, whenever the
+configured judge is `MockProvider` or no judge was configured at all. The
+skip isn't counted in the report at all, since no trace exists for it.
 
 `compute_task_hash(task)` hashes `task.yaml` plus every referenced fixture
 file's contents, stamped into every trace as `task_hash`, so a trace can

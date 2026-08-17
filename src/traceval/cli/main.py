@@ -130,6 +130,11 @@ def run(
         None, "--replay-trace", help="Required when --agent replay"
     ),
     max_steps: int | None = typer.Option(None, "--max-steps", help="Override task.max_steps"),
+    exit_zero_on_error: bool = typer.Option(
+        False,
+        "--exit-zero-on-error",
+        help="Exit 0 even if any task errored (default: exit nonzero on any error)",
+    ),
 ) -> None:
     """Run every task under TASK_PATH and print an accuracy/latency/cost report."""
     registry = ModelRegistry.load()
@@ -143,10 +148,21 @@ def run(
         judge_resolved = judge_provider_instance.resolve_model(judge_model)
 
     traces: list[Trace] = []
+    untraced_error_count = 0
     for task_dir in _discover_task_dirs(task_path):
         task = load_task(task_dir)
         if max_steps is not None:
             task.max_steps = max_steps
+        if task.requires_live_judge and (
+            judge_provider_instance is None or isinstance(judge_provider_instance, MockProvider)
+        ):
+            # A mock judge can only ever rubber-stamp a canned verdict, so
+            # running this task against one wouldn't test anything; skip it
+            # rather than either faking a pass or erroring the batch on a
+            # missing --judge-provider. Not counted in the report at all
+            # (no trace exists), unlike an actual error.
+            typer.echo(f"{task.id}: skipped (requires a real --judge-provider)")
+            continue
         agent_instance = _build_agent(
             agent, task_dir, replay_trace, provider_instance, resolved_model
         )
@@ -180,6 +196,7 @@ def run(
                     f"{task.id}: error ({type(exc).__name__}: {exc}) -> no trace written",
                     err=True,
                 )
+                untraced_error_count += 1
                 continue
             typer.echo(f"{task.id}: error ({type(exc).__name__}: {exc}) -> {trace_path}", err=True)
         else:
@@ -187,7 +204,13 @@ def run(
             typer.echo(f"{task.id}: {outcome} -> {trace_dir / (trace.header.run_id + '.jsonl')}")
         traces.append(trace)
 
-    _print_report(build_report(traces))
+    report = build_report(traces)
+    _print_report(report)
+
+    if untraced_error_count > 0:
+        typer.echo(f"{untraced_error_count} task(s) errored before a trace could be written.")
+    if (report.error_count > 0 or untraced_error_count > 0) and not exit_zero_on_error:
+        raise typer.Exit(code=1)
 
 
 @app.command()

@@ -261,7 +261,7 @@ def test_failing_scorer_does_not_discard_passing_scorers(tmp_path: Path) -> None
     assert trace.footer is not None
     assert trace.footer.outcome == Outcome.ERROR
     # Both passing scorers ran and their results survived the sibling
-    # scorer's failure — the middle scorer raising didn't stop the third
+    # scorer's failure: the middle scorer raising didn't stop the third
     # from being attempted, and didn't discard the first's result.
     assert {s.scorer for s in trace.footer.scores} == {"exact_match", "rubric"}
     assert all(s.passed for s in trace.footer.scores)

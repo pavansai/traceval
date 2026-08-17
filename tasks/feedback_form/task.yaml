@@ -3,6 +3,12 @@ format_version: 1
 seed: 303
 max_steps: 5
 
+# A mock judge can only ever rubber-stamp a canned verdict, never actually
+# judge the trajectory, so this task is skipped rather than faked when only
+# a mock judge is configured. Run it with --judge-provider anthropic (or
+# another real provider) to actually exercise it.
+requires_live_judge: true
+
 environment:
   kind: browser
   config:

@@ -430,7 +430,7 @@ def test_cli_diff_warns_on_different_seed(tmp_path: Path) -> None:
 
 
 class _BatchTestEnvironment:
-    """Registered as env kind 'cli_batch_fake' — deliberately fails in
+    """Registered as env kind 'cli_batch_fake': deliberately fails in
     reset() when configured to, for testing that `traceval run` continues a
     multi-task batch past one task's failure rather than aborting it.
     """
@@ -453,15 +453,8 @@ class _BatchTestEnvironment:
         pass
 
 
-def test_cli_run_continues_batch_when_middle_task_errors(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setitem(
-        runner_module._ENVIRONMENT_FACTORIES, "cli_batch_fake", _BatchTestEnvironment
-    )
-
-    task_set = tmp_path / "task_set"
-    for name, should_fail in [("task_a", False), ("task_b", True), ("task_c", False)]:
+def _write_batch_task_set(task_set: Path, entries: list[tuple[str, bool]]) -> None:
+    for name, should_fail in entries:
         task_dir = task_set / name
         task_dir.mkdir(parents=True)
         (task_dir / "task.yaml").write_text(
@@ -474,11 +467,26 @@ def test_cli_run_continues_batch_when_middle_task_errors(
         )
         (task_dir / "scripted_trajectory.jsonl").write_text("")
 
+
+def test_cli_run_continues_batch_when_middle_task_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(
+        runner_module._ENVIRONMENT_FACTORIES, "cli_batch_fake", _BatchTestEnvironment
+    )
+
+    task_set = tmp_path / "task_set"
+    _write_batch_task_set(task_set, [("task_a", False), ("task_b", True), ("task_c", False)])
+
     trace_dir = tmp_path / "runs"
     runner = CliRunner()
     result = runner.invoke(
         app, ["run", str(task_set), "--agent", "oracle", "--trace-dir", str(trace_dir)]
     )
+
+    # A harness that exits 0 with an unscored task would silently green a CI
+    # pipeline, so a batch containing any error must exit nonzero by default.
+    assert result.exit_code != 0
 
     output = normalize_cli_output(result.output)
     assert "task_a" in output
@@ -499,3 +507,80 @@ def test_cli_run_continues_batch_when_middle_task_errors(
     assert traces_by_task["task_b"].footer.error.error_type == "RuntimeError"
     assert traces_by_task["task_c"].footer is not None
     assert traces_by_task["task_c"].footer.outcome == Outcome.SUCCESS
+
+
+def test_cli_run_exit_zero_on_error_flag_preserves_old_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(
+        runner_module._ENVIRONMENT_FACTORIES, "cli_batch_fake", _BatchTestEnvironment
+    )
+
+    task_set = tmp_path / "task_set"
+    _write_batch_task_set(task_set, [("task_a", True)])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(task_set),
+            "--agent",
+            "oracle",
+            "--trace-dir",
+            str(tmp_path / "runs"),
+            "--exit-zero-on-error",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "error=1" in normalize_cli_output(result.output)
+
+
+def test_cli_run_skips_live_only_task_when_judge_is_mock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(
+        runner_module._ENVIRONMENT_FACTORIES, "cli_batch_fake", _BatchTestEnvironment
+    )
+
+    task_set = tmp_path / "task_set"
+    task_dir = task_set / "needs_real_judge"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.yaml").write_text(
+        "id: needs_real_judge\n"
+        "seed: 1\n"
+        "max_steps: 5\n"
+        "requires_live_judge: true\n"
+        "environment:\n"
+        "  kind: cli_batch_fake\n"
+        "  config: {should_fail: false}\n"
+        "scorers:\n"
+        "  - kind: model_graded\n"
+        "    config:\n"
+        "      rubric_prompt: irrelevant, never reached\n"
+    )
+    (task_dir / "scripted_trajectory.jsonl").write_text("")
+
+    trace_dir = tmp_path / "runs"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(task_set),
+            "--agent",
+            "oracle",
+            "--judge-provider",
+            "mock",
+            "--judge-model",
+            "mock-judge",
+            "--trace-dir",
+            str(trace_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    output = normalize_cli_output(result.output)
+    assert "needs_real_judge: skipped" in output
+    assert "runs: 0" in output
+    assert not list(trace_dir.glob("*.jsonl"))

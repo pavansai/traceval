@@ -35,6 +35,12 @@ class Task(BaseModel):
     max_steps: int = 20
     fixture_files: list[str] = Field(default_factory=list)
     expected: Any = None
+    # A canned mock judge response can only ever rubber-stamp a verdict, not
+    # actually judge anything, so a task whose model_graded scorer needs a
+    # real judge to mean anything sets this rather than faking a pass. The
+    # CLI skips such tasks (not errors them) when only a mock judge is
+    # configured.
+    requires_live_judge: bool = False
     task_dir: Path
 
 
@@ -60,6 +66,7 @@ def load_task(task_dir: Path) -> Task:
         max_steps=data.get("max_steps", 20),
         fixture_files=data.get("fixture_files", []),
         expected=data.get("expected"),
+        requires_live_judge=data.get("requires_live_judge", False),
         task_dir=task_dir,
     )
 
