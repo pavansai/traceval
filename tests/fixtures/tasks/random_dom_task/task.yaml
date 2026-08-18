@@ -1,7 +1,9 @@
 id: random_dom_task
-format_version: 1
+format_version: 3
 seed: 42
 max_steps: 5
+
+goal: "Wait and observe the page's rendered value."
 
 environment:
   kind: browser

@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `TASK_FORMAT_VERSION` bumped to 3: `task.yaml` now requires a `goal` field,
+  a natural-language statement of what the agent is being asked to
+  accomplish. `LiveAgent` includes it verbatim in its prompt; `load_task`
+  fails loudly if it's missing or blank. Previously a task was only an
+  environment plus a scoring rule, so a live model had no way to know what
+  the task actually wanted and could only guess from the DOM. `login_form`
+  scored a real model 0% for typing a plausible username ("testuser")
+  instead of the one the scorer happened to check for ("alice"), which
+  measured nothing about the model since the task never said which
+  username was required. Task goals are written to state the requirement
+  without leaking the exact string a scorer checks (`login_form`'s goal
+  says to log in as user alice, not "type alice into #username").
 - `TASK_FORMAT_VERSION` bumped to 2: `environment.config.observe_selectors`
   (browser environment) is now unambiguously "every element the agent needs
   to see to act," not just whatever a scorer happens to check afterward.

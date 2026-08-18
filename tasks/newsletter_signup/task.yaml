@@ -1,7 +1,9 @@
 id: newsletter_signup
-format_version: 2
+format_version: 3
 seed: 404
 max_steps: 5
+
+goal: "Sign up for the newsletter using the email address reader@example.com."
 
 environment:
   kind: browser

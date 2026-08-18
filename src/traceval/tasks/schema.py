@@ -10,6 +10,16 @@ enforces the load-bearing half of that contract: an `exact_match` scorer's
 `target` must be a selector the agent was actually shown, or the task is
 structurally impossible to complete and fails to load rather than silently
 scoring `None` against `expected` forever.
+
+Version 3 adds the required `goal` field: a natural-language statement of
+what the agent is being asked to accomplish. Before this, a task was only an
+environment plus a scoring rule; a `live` agent had no way to know what it
+was being asked to do beyond guessing from the DOM, so a task requiring an
+exact input value (a specific username, a specific to-do item) was
+structurally unwinnable no matter how capable the model was. `load_task`
+rejects an empty `goal` for the same reason it rejects an unobserved
+`exact_match` target: a task that cannot be completed as configured should
+fail to load, not run and silently measure nothing.
 """
 
 from __future__ import annotations
@@ -20,7 +30,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
-TASK_FORMAT_VERSION = 2
+TASK_FORMAT_VERSION = 3
 
 
 class EnvironmentConfig(BaseModel):
@@ -37,6 +47,12 @@ class Task(BaseModel):
     id: str
     format_version: int = TASK_FORMAT_VERSION
     seed: int
+    # Natural-language statement of what the agent is being asked to
+    # accomplish. LiveAgent includes this verbatim in its prompt; it's the
+    # only channel a live agent has for the task's goal, since it never
+    # sees task.yaml itself. Oracle/Replay ignore it entirely, same as they
+    # ignore Observation.
+    goal: str
     environment: EnvironmentConfig
     scorers: list[ScorerConfig] = Field(default_factory=list)
     max_steps: int = 20
@@ -72,6 +88,7 @@ def load_task(task_dir: Path) -> Task:
         id=data["id"],
         format_version=data.get("format_version", TASK_FORMAT_VERSION),
         seed=data["seed"],
+        goal=data.get("goal", ""),
         environment=EnvironmentConfig(**data["environment"]),
         scorers=[ScorerConfig(**s) for s in data.get("scorers", [])],
         max_steps=data.get("max_steps", 20),
@@ -80,8 +97,22 @@ def load_task(task_dir: Path) -> Task:
         requires_live_judge=data.get("requires_live_judge", False),
         task_dir=task_dir,
     )
+    _validate_goal_is_present(task)
     _validate_scorer_selectors_are_observed(task)
     return task
+
+
+def _validate_goal_is_present(task: Task) -> None:
+    """A `live` agent's only source of the task's goal is this field; an
+    empty one makes the task structurally unwinnable for anything beyond
+    what the model can guess from the DOM alone.
+    """
+    if not task.goal.strip():
+        raise TaskValidationError(
+            f"task {task.id!r}: goal must be a non-empty natural-language "
+            "statement of what the agent is being asked to accomplish. "
+            "LiveAgent has no other way to know what the task wants."
+        )
 
 
 def _validate_scorer_selectors_are_observed(task: Task) -> None:
