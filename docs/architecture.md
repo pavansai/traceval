@@ -80,6 +80,24 @@ Three implementations:
   minimal (a JSON-object-in-content action protocol), populates `usage` and
   `agent_latency_ms` from the `ProviderResponse`, and, because it needs an
   API key, is only exercised in tests via `MockProvider`, never a real one.
+  It is constructed with `task.goal` and includes it verbatim in every
+  prompt; `goal` is the only channel a live agent has for what the task
+  wants, since it never sees `task.yaml` itself.
+
+**A live agent's prompt is now doing real work, and that's a confound.**
+Now that `LiveAgent`'s prompt includes `task.goal` and the parsed action
+protocol, the wording of that prompt and the quality of the JSON-extraction
+scaffold around it directly affect whether a capable model's correct intent
+survives into a parseable `Action`. A task's pass rate is no longer only a
+function of the model under test; it's also a function of how well
+`LiveAgent`'s scaffold conveys the goal and recovers the model's response.
+This is the same harness-versus-model conflation that motivated writing
+`goal` in the first place (see `TASK_FORMAT_VERSION` 3 in the CHANGELOG):
+fixing one instance of it (the task never stating its goal) surfaces the
+next one (the agent scaffold now mediating how that goal reaches the
+model). The README's own sample-run numbers are a measurement of
+`traceval`'s scaffold as much as of the model being evaluated, not a
+clean measurement of the model alone.
 
 **Only `LiveAgent` ever reads `Observation`.** `OracleAgent` and
 `ReplayAgent` take the `observation` parameter but never look at it; their
@@ -202,11 +220,22 @@ this file.
 
 A task is a directory with `task.yaml` plus whatever fixture files it
 references (`fixture_files: [...]`). `task.yaml` fields: `id`, `seed`,
-`environment` (`kind` + kind-specific `config`), `max_steps`, `scorers`
-(list of `{kind, config}`), `expected` (used by `exact_match`),
-`requires_live_judge` (default `false`; see below). See
-`tests/fixtures/tasks/example_search_task/task.yaml` for a complete
-example, including the `rubric` scorer's `action_occurred` criteria.
+`goal` (required, non-empty; see below), `environment` (`kind` +
+kind-specific `config`), `max_steps`, `scorers` (list of `{kind, config}`),
+`expected` (used by `exact_match`), `requires_live_judge` (default `false`;
+see below). See `tests/fixtures/tasks/example_search_task/task.yaml` for a
+complete example, including the `rubric` scorer's `action_occurred`
+criteria.
+
+`goal` is a natural-language statement of what the agent is being asked to
+accomplish, e.g. "Log in as the user alice." It's written to state the
+requirement without leaking the exact string a scorer checks: the goal
+says *what* to do, never the literal value an `exact_match` scorer
+compares against, or the task would be giving the model the answer instead
+of asking it to find one. `load_task` raises `TaskValidationError` if
+`goal` is missing or blank, since an empty goal makes the task
+structurally unwinnable for `LiveAgent`, the only agent that ever reads it
+(Oracle and Replay ignore it entirely, same as they ignore `Observation`).
 
 A `model_graded` task set `requires_live_judge: true` when a canned mock
 judge verdict would only ever rubber-stamp a pass rather than actually

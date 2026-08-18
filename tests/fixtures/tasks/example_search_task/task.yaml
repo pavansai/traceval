@@ -1,7 +1,9 @@
 id: example_search_task
-format_version: 1
+format_version: 3
 seed: 12345
 max_steps: 5
+
+goal: "Search for \"playwright\" and view the result."
 
 environment:
   kind: browser

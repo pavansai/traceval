@@ -137,7 +137,7 @@ def test_live_agent_path_produces_nonzero_totals_and_cost(tmp_path: Path) -> Non
 
     trace = run_task(
         task=task,
-        agent=LiveAgent(provider, resolved_model),
+        agent=LiveAgent(provider, resolved_model, goal=task.goal),
         agent_kind=AgentKind.LIVE,
         model_under_test=resolved_model,
         scorers=[],
@@ -461,6 +461,7 @@ def _write_batch_task_set(task_set: Path, entries: list[tuple[str, bool]]) -> No
             f"id: {name}\n"
             "seed: 1\n"
             "max_steps: 5\n"
+            "goal: irrelevant for this fake, non-live environment\n"
             "environment:\n"
             "  kind: cli_batch_fake\n"
             f"  config: {{should_fail: {str(should_fail).lower()}}}\n"
@@ -550,6 +551,7 @@ def test_cli_run_skips_live_only_task_when_judge_is_mock(
         "id: needs_real_judge\n"
         "seed: 1\n"
         "max_steps: 5\n"
+        "goal: irrelevant, never reached\n"
         "requires_live_judge: true\n"
         "environment:\n"
         "  kind: cli_batch_fake\n"

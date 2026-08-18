@@ -103,7 +103,7 @@ def _live_model() -> ResolvedModel:
 
 def test_live_agent_strips_json_language_tagged_code_fence() -> None:
     provider = MockProvider(canned_response='```json\n{"kind": "click", "target": "#x"}\n```')
-    agent = LiveAgent(provider, _live_model())
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
     step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
     assert step.action is not None
     assert step.action.kind == "click"
@@ -112,7 +112,7 @@ def test_live_agent_strips_json_language_tagged_code_fence() -> None:
 
 def test_live_agent_strips_untagged_code_fence() -> None:
     provider = MockProvider(canned_response='```\n{"kind": "wait", "ms": 0}\n```')
-    agent = LiveAgent(provider, _live_model())
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
     step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
     assert step.action is not None
     assert step.action.kind == "wait"
@@ -120,14 +120,14 @@ def test_live_agent_strips_untagged_code_fence() -> None:
 
 def test_live_agent_strips_fence_around_done() -> None:
     provider = MockProvider(canned_response="```\nDONE\n```")
-    agent = LiveAgent(provider, _live_model())
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
     step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
     assert step.action is None
 
 
 def test_live_agent_parses_unfenced_action_unchanged() -> None:
     provider = MockProvider(canned_response='{"kind": "wait", "ms": 0}')
-    agent = LiveAgent(provider, _live_model())
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
     step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
     assert step.action is not None
     assert step.action.kind == "wait"

@@ -46,10 +46,12 @@ class LiveAgent:
         self,
         provider: Provider,
         resolved_model: ResolvedModel,
+        goal: str,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ) -> None:
         self._provider = provider
         self._resolved_model = resolved_model
+        self._goal = goal
         self._system_prompt = system_prompt
 
     def act(self, observation: Observation, history: list[TraceStep]) -> AgentStep:
@@ -72,7 +74,11 @@ class LiveAgent:
         observation_text = (
             f"url={observation.url} title={observation.title} elements={observation.elements}"
         )
-        content = f"History:\n{transcript or '(none)'}\n\nCurrent observation:\n{observation_text}"
+        content = (
+            f"Goal: {self._goal}\n\n"
+            f"History:\n{transcript or '(none)'}\n\n"
+            f"Current observation:\n{observation_text}"
+        )
         return [Message(role="user", content=f"{self._system_prompt}\n\n{content}")]
 
 

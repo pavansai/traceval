@@ -16,11 +16,28 @@ def test_load_task_parses_fields() -> None:
     task = load_task(EXAMPLE_TASK_DIR)
     assert task.id == "example_search_task"
     assert task.seed == 12345
+    assert task.goal == 'Search for "playwright" and view the result.'
     assert task.environment.kind == "browser"
     assert task.environment.config["fixture_file"] == "fixture.html"
     assert {s.kind for s in task.scorers} == {"exact_match", "rubric"}
     assert task.expected == "found: playwright"
     assert task.requires_live_judge is False
+
+
+def test_load_task_rejects_missing_goal(tmp_path: Path) -> None:
+    (tmp_path / "task.yaml").write_text(
+        "id: goalless_task\nseed: 1\nenvironment:\n  kind: fake\n  config: {}\n"
+    )
+    with pytest.raises(TaskValidationError, match="goal must be a non-empty"):
+        load_task(tmp_path)
+
+
+def test_load_task_rejects_blank_goal(tmp_path: Path) -> None:
+    (tmp_path / "task.yaml").write_text(
+        "id: goalless_task\nseed: 1\ngoal: '   '\nenvironment:\n  kind: fake\n  config: {}\n"
+    )
+    with pytest.raises(TaskValidationError, match="goal must be a non-empty"):
+        load_task(tmp_path)
 
 
 def test_load_task_parses_requires_live_judge() -> None:
@@ -63,6 +80,7 @@ def _write_task_yaml(task_dir: Path, *, observe_selectors: list[str], target: st
     (task_dir / "task.yaml").write_text(
         "id: broken_task\n"
         "seed: 1\n"
+        "goal: irrelevant to this validation\n"
         "environment:\n"
         "  kind: browser\n"
         "  config:\n"
@@ -93,6 +111,7 @@ def test_load_task_skips_selector_validation_for_non_browser_environment(tmp_pat
     (tmp_path / "task.yaml").write_text(
         "id: fake_env_task\n"
         "seed: 1\n"
+        "goal: irrelevant to this validation\n"
         "environment:\n"
         "  kind: fake\n"
         "  config: {}\n"
@@ -115,4 +134,5 @@ def test_all_real_tasks_pass_selector_validation() -> None:
     assert len(task_dirs) >= 4
     for task_dir in task_dirs:
         task = load_task(task_dir)
-        assert task.format_version == 2
+        assert task.format_version == 3
+        assert task.goal.strip()

@@ -1,7 +1,9 @@
 id: todo_list
-format_version: 2
+format_version: 3
 seed: 202
 max_steps: 5
+
+goal: "Add milk to the to-do list."
 
 environment:
   kind: browser

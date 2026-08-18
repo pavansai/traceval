@@ -92,6 +92,7 @@ def _make_task(task_dir: Path, config: dict[str, Any] | None = None, max_steps: 
         "id: fake_task\n"
         "seed: 1\n"
         f"max_steps: {max_steps}\n"
+        "goal: irrelevant for this fake, non-live environment\n"
         "environment:\n"
         "  kind: fake\n"
         f"  config: {json.dumps(config or {})}\n"

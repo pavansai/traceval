@@ -42,13 +42,13 @@ def _build_provider(name: str, registry: ModelRegistry) -> Provider:
 
 def _build_agent(
     agent_kind: AgentKind,
-    task_dir: Path,
+    task: Task,
     replay_trace: Path | None,
     provider_instance: Provider,
     resolved_model: ResolvedModel,
 ) -> Agent:
     if agent_kind == AgentKind.ORACLE:
-        script_path = task_dir / "scripted_trajectory.jsonl"
+        script_path = task.task_dir / "scripted_trajectory.jsonl"
         if not script_path.exists():
             raise typer.BadParameter(f"oracle agent requires {script_path}")
         return OracleAgent(script_path)
@@ -56,7 +56,7 @@ def _build_agent(
         if replay_trace is None:
             raise typer.BadParameter("--replay-trace is required when --agent replay")
         return ReplayAgent(replay_trace)
-    return LiveAgent(provider_instance, resolved_model)
+    return LiveAgent(provider_instance, resolved_model, goal=task.goal)
 
 
 def _build_scorers(
@@ -163,9 +163,7 @@ def run(
             # (no trace exists), unlike an actual error.
             typer.echo(f"{task.id}: skipped (requires a real --judge-provider)")
             continue
-        agent_instance = _build_agent(
-            agent, task_dir, replay_trace, provider_instance, resolved_model
-        )
+        agent_instance = _build_agent(agent, task, replay_trace, provider_instance, resolved_model)
         scorers = _build_scorers(task, judge_provider_instance, judge_resolved)
         # A known run_id up front means the trace path is knowable even if
         # run_task raises, so one task erroring doesn't abort the rest of
