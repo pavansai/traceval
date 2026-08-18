@@ -1,5 +1,5 @@
 id: feedback_form
-format_version: 1
+format_version: 2
 seed: 303
 max_steps: 5
 
@@ -13,7 +13,11 @@ environment:
   kind: browser
   config:
     fixture_file: fixture.html
-    observe_selectors: ["#feedback", "#status"]
+    # #submit is here for the agent to see and click. Originally omitted;
+    # a live run's agent, never told #submit existed, guessed and clicked
+    # #status (a plain non-interactive div) instead and timed out. Oracle
+    # never caught this because it doesn't read observations at all.
+    observe_selectors: ["#feedback", "#submit", "#status"]
     viewport: { width: 1280, height: 800 }
     locale: en-US
     timezone_id: UTC

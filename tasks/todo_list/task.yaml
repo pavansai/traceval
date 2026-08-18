@@ -1,5 +1,5 @@
 id: todo_list
-format_version: 1
+format_version: 2
 seed: 202
 max_steps: 5
 
@@ -7,7 +7,10 @@ environment:
   kind: browser
   config:
     fixture_file: fixture.html
-    observe_selectors: ["#item", "#list"]
+    # #add is here for the agent to see and click; #list is context (rubric
+    # doesn't read it, but seeing the list stay empty helps a live agent
+    # notice it hasn't clicked add yet).
+    observe_selectors: ["#item", "#add", "#list"]
     viewport: { width: 1280, height: 800 }
     locale: en-US
     timezone_id: UTC

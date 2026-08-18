@@ -42,6 +42,18 @@ PRNG via an init script, so the same seed against the same fixture produces
 byte-identical observations. A future desktop environment implements the
 same four methods and needs no changes to the runner.
 
+`environment.config.observe_selectors` is what `_observe()` reads into
+`Observation.elements` after every step, which is the *only* information a
+`live` agent ever gets about the page; there is no DOM/accessibility tree or
+screenshot. A task's `observe_selectors` must include every element the
+agent needs to know about to act (buttons, inputs), not just the ones a
+scorer checks afterward, or the task is structurally unsolvable by a live
+agent (see `load_task`'s validation below).
+`environment.config.action_timeout_ms` (default 5000) bounds
+`click`/`type`/`navigate`; Playwright's own default is 30s, which is fine
+for a human but far too long to burn on a single wrong selector guess in an
+agent loop.
+
 ### `Agent` (`src/traceval/agents/__init__.py`)
 
 ```python
@@ -53,8 +65,7 @@ class Agent(Protocol):
 (`input_tokens`/`output_tokens`), and `agent_latency_ms`. `action=None` ends
 the episode; this is the only completion signal, since a real step always
 has an action, so there's no separate "done" flag to keep in sync with it.
-Three
-implementations:
+Three implementations:
 
 - **`OracleAgent`** replays a task's `scripted_trajectory.jsonl`. Each line
   may carry an `expect` block describing the observation state expected
@@ -69,6 +80,19 @@ implementations:
   minimal (a JSON-object-in-content action protocol), populates `usage` and
   `agent_latency_ms` from the `ProviderResponse`, and, because it needs an
   API key, is only exercised in tests via `MockProvider`, never a real one.
+
+**Only `LiveAgent` ever reads `Observation`.** `OracleAgent` and
+`ReplayAgent` take the `observation` parameter but never look at it; their
+next action comes purely from a pre-written script or a recorded trace, not
+from anything the environment reports back. This means a task whose
+`observe_selectors` don't show the agent everything it needs to act (the
+bug that motivated the `observe_selectors`/scoring-target split above) is
+completely invisible under Oracle or Replay, no matter how thoroughly
+they're tested: they'll happily run the exact same scripted clicks whether
+or not a live agent could ever have discovered those selectors on its own.
+Only a `live` run exercises the path that actually depends on
+`Observation` content, which is exactly how the `feedback_form` bug went
+unnoticed until `scripts/smoke_live.py` first ran against a real model.
 
 ### `Scorer` (`src/traceval/scoring/__init__.py`)
 
@@ -190,6 +214,18 @@ judging anything (see `tasks/feedback_form/task.yaml`). `cli run` skips such
 a task, rather than running and erroring it or faking a pass, whenever the
 configured judge is `MockProvider` or no judge was configured at all. The
 skip isn't counted in the report at all, since no trace exists for it.
+
+`load_task` validates as well as parses: for the browser environment, every
+`exact_match` scorer's `target` must appear in
+`environment.config.observe_selectors`, or the task raises
+`TaskValidationError` immediately rather than loading successfully and
+failing to score forever afterward. `rubric`'s `target` is exempt; it's an
+*action* target checked against the trace's action history, not a value
+read from an observation, so it isn't part of this contract. This is the
+load-bearing half of `TASK_FORMAT_VERSION` 2's clarified contract:
+`observe_selectors` is every element the agent needs to see to act, not
+just what a scorer happens to check afterward (see the `Environment`
+section above).
 
 `compute_task_hash(task)` hashes `task.yaml` plus every referenced fixture
 file's contents, stamped into every trace as `task_hash`, so a trace can

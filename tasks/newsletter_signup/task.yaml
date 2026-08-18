@@ -1,5 +1,5 @@
 id: newsletter_signup
-format_version: 1
+format_version: 2
 seed: 404
 max_steps: 5
 
@@ -7,7 +7,9 @@ environment:
   kind: browser
   config:
     fixture_file: fixture.html
-    observe_selectors: ["#email", "#status"]
+    # #subscribe is here for the agent to see and click; #status is here
+    # for exact_match to score.
+    observe_selectors: ["#email", "#subscribe", "#status"]
     viewport: { width: 1280, height: 800 }
     locale: en-US
     timezone_id: UTC

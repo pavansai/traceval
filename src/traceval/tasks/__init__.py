@@ -5,6 +5,7 @@ from traceval.tasks.schema import (
     ScorerConfig,
     Task,
     TaskFixture,
+    TaskValidationError,
     build_fixture,
     load_task,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "ScorerConfig",
     "Task",
     "TaskFixture",
+    "TaskValidationError",
     "build_fixture",
     "compute_task_hash",
     "load_task",

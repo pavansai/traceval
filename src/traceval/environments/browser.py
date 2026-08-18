@@ -32,6 +32,9 @@ _SEEDED_RANDOM_INIT_SCRIPT = """
 """
 
 
+_DEFAULT_ACTION_TIMEOUT_MS = 5000
+
+
 class BrowserEnvironment:
     def __init__(self, config: dict[str, Any]) -> None:
         self._fixture_file: str = config["fixture_file"]
@@ -39,6 +42,12 @@ class BrowserEnvironment:
         self._viewport: dict[str, int] = config.get("viewport", {"width": 1280, "height": 800})
         self._locale: str = config.get("locale", "en-US")
         self._timezone_id: str = config.get("timezone_id", "UTC")
+        # Playwright's own default (30s) is fine for a human debugging a
+        # page by hand; it's much too long for an agent loop, where a wrong
+        # guess at a selector should fail fast rather than burn real
+        # wall-clock time waiting out a click that was never going to
+        # resolve.
+        self._action_timeout_ms: int = config.get("action_timeout_ms", _DEFAULT_ACTION_TIMEOUT_MS)
 
         self._playwright: Any = None
         self._browser: Browser | None = None
@@ -72,11 +81,15 @@ class BrowserEnvironment:
     def step(self, action: Action) -> StepResult:
         page = self._require_page()
         if action.kind == "click":
-            page.click(self._require(action.target, "target"))
+            page.click(self._require(action.target, "target"), timeout=self._action_timeout_ms)
         elif action.kind == "type":
-            page.fill(self._require(action.target, "target"), self._require(action.value, "value"))
+            page.fill(
+                self._require(action.target, "target"),
+                self._require(action.value, "value"),
+                timeout=self._action_timeout_ms,
+            )
         elif action.kind == "navigate":
-            page.goto(self._require(action.url, "url"))
+            page.goto(self._require(action.url, "url"), timeout=self._action_timeout_ms)
         elif action.kind == "wait":
             page.wait_for_timeout(action.ms or 0)
         else:
