@@ -47,13 +47,29 @@ concrete walkthrough for each.
 
 ## Manual smoke-testing a real model
 
-There's no `scripts/smoke_live.py` yet. If you're adding real-provider
-coverage, keep it out of `pytest`/CI (it needs `ANTHROPIC_API_KEY`) and gate
-it behind an explicit script invocation, e.g.:
+`scripts/smoke_live.py` runs `tasks/feedback_form` through `LiveAgent` +
+`AnthropicProvider` (a real model acting) and `ModelGradedScorer` with a real
+judge (same provider). Deliberately not a pytest test, so it never runs in
+CI or needs `ANTHROPIC_API_KEY` there:
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...
-uv run traceval run tests/fixtures/tasks/example_search_task \
+uv run python scripts/smoke_live.py [--model claude-haiku-4-5]
+```
+
+It never writes the key anywhere; `AnthropicProvider` reads it from the
+environment lazily on the first real API call. Prints the trace's real
+usage/cost/latency numbers and states plainly whether auth, token-usage
+parsing, cost computation, agent latency, and judge-verdict parsing each
+worked.
+
+For any other real-provider coverage you're adding, keep it out of
+`pytest`/CI the same way (it needs `ANTHROPIC_API_KEY`) and gate it behind
+an explicit script invocation, e.g.:
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...
+uv run traceval run tasks/login_form \
   --agent live --provider anthropic --model claude-sonnet-5
 ```
 
