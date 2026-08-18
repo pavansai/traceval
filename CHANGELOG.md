@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default 5s) applied to click/type/navigate. Previously unset, so every
   action used Playwright's native 30s default; a wrong selector guess in an
   agent loop should fail fast, not burn 30 real seconds finding out.
+- `traceval diff --against-last-passing`: given one trace path, scans its
+  directory for the most recent `Outcome.SUCCESS` trace with a matching
+  `task_hash` and diffs against that, instead of requiring an explicit
+  second trace path. Candidates are ordered by the header's `started_at`,
+  not file mtime, so the result is stable if trace files get copied
+  around. Refuses clearly when no candidate exists, and distinguishes
+  "no passing runs in this directory at all" from "passing runs exist,
+  just not for this task_hash", since those call for different next steps.
 
 ### Changed
 

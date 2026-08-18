@@ -7,12 +7,15 @@ the resulting score/latency/cost deltas.
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from traceval.providers import ResolvedModel
-from traceval.trace.schema import Trace
+from traceval.trace.reader import TraceSchemaError, read_trace
+from traceval.trace.schema import Outcome, Trace
 
 
 class HeaderDelta(BaseModel):
@@ -175,4 +178,64 @@ def _score_deltas(a: Trace, b: Trace) -> list[ScoreDelta]:
     return deltas
 
 
-__all__ = ["HeaderDelta", "ScoreDelta", "StepDivergence", "TraceDiff", "diff_traces"]
+class NoPassingTraceFoundError(RuntimeError):
+    """Raised by find_last_passing_trace when no candidate trace exists.
+
+    The message distinguishes two different problems: no `Outcome.SUCCESS`
+    trace in the directory at all, versus passing traces that exist but
+    none for this specific `task_hash`. Those call for different next
+    steps from the user (go pass the task at all vs. rerun it against the
+    exact task version being diffed), so collapsing them into one message
+    would hide which one applies.
+    """
+
+
+def find_last_passing_trace(trace_path: Path, task_hash: str) -> Path:
+    """Find the most recent `Outcome.SUCCESS` trace in `trace_path`'s
+    directory whose `task_hash` matches, ordered by the header's
+    `started_at` rather than file mtime so the result doesn't change if
+    trace files get copied around. `trace_path` itself is excluded, since
+    diffing a trace against itself is never useful.
+    """
+    trace_path = trace_path.resolve()
+    directory = trace_path.parent
+    best: tuple[datetime, Path] | None = None
+    saw_any_passing = False
+    for candidate_path in sorted(directory.glob("*.jsonl")):
+        if candidate_path.resolve() == trace_path:
+            continue
+        try:
+            candidate = read_trace(candidate_path)
+        except (TraceSchemaError, ValueError):
+            continue
+        if candidate.footer is None or candidate.footer.outcome != Outcome.SUCCESS:
+            continue
+        saw_any_passing = True
+        if candidate.header.task_hash != task_hash:
+            continue
+        if best is None or candidate.header.started_at > best[0]:
+            best = (candidate.header.started_at, candidate_path)
+
+    if best is not None:
+        return best[1]
+    if saw_any_passing:
+        raise NoPassingTraceFoundError(
+            f"no passing trace found in {directory} for task_hash {task_hash!r}: "
+            "other tasks have passing runs in this directory, but this one doesn't. "
+            "Run this task again until it passes, then retry."
+        )
+    raise NoPassingTraceFoundError(
+        f"no passing trace found in {directory}: no trace in this directory has "
+        "Outcome.SUCCESS at all."
+    )
+
+
+__all__ = [
+    "HeaderDelta",
+    "NoPassingTraceFoundError",
+    "ScoreDelta",
+    "StepDivergence",
+    "TraceDiff",
+    "diff_traces",
+    "find_last_passing_trace",
+]
