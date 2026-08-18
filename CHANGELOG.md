@@ -27,3 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full CI (lint, format check, type check, unit + integration tests) with
   no repository secrets. Every test runs via the oracle/replay agents and
   the mock provider, never a real API key.
+
+### Fixed
+
+- `LiveAgent` failed on its first real-model call: it parsed the model's
+  response with `json.loads()` directly, but real Claude models routinely
+  wrap requested JSON in a markdown code fence (` ```json ... ``` `) even
+  when told to reply with nothing else. Because no test may use a real API
+  key, this path had never actually executed until `scripts/smoke_live.py`
+  first ran against a live model and hit it on turn one. Fixed by stripping
+  a fence that wraps the entire response before parsing.

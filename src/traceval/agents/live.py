@@ -10,6 +10,7 @@ native tool-use.
 from __future__ import annotations
 
 import json
+import re
 
 from traceval.agents import AgentStep, AgentUsage
 from traceval.environments import Action, Observation
@@ -22,6 +23,18 @@ DEFAULT_SYSTEM_PROMPT = (
     '{"kind": "type", "target": "#query", "value": "text"}, or the literal string '
     "DONE when the task is complete. Reply with nothing else."
 )
+
+# Real models routinely wrap requested JSON in a markdown code fence
+# (```json ... ``` or ``` ... ```) even when told to reply with nothing
+# else; this was never exercised before scripts/smoke_live.py first ran
+# against a real model and hit it immediately. Only strips a fence that
+# wraps the entire response, so it never touches a plain unfenced action.
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+
+
+def _strip_code_fence(content: str) -> str:
+    match = _CODE_FENCE_RE.match(content)
+    return match.group(1) if match else content
 
 
 class LiveAgentResponseError(ValueError):
@@ -43,7 +56,7 @@ class LiveAgent:
         messages = self._build_messages(observation, history)
         response = self._provider.generate(self._resolved_model, messages)
         usage = AgentUsage(input_tokens=response.input_tokens, output_tokens=response.output_tokens)
-        content = response.content.strip()
+        content = _strip_code_fence(response.content.strip())
         if content == "DONE":
             return AgentStep(action=None, usage=usage, agent_latency_ms=response.latency_ms)
         try:

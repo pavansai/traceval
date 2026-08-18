@@ -3,10 +3,12 @@ from pathlib import Path
 
 import pytest
 
+from traceval.agents.live import LiveAgent
 from traceval.agents.oracle import OracleAgent, ScriptedTrajectoryDivergedError
 from traceval.agents.replay import ReplayAgent
 from traceval.environments import Observation
 from traceval.providers import ResolvedModel
+from traceval.providers.mock_provider import MockProvider
 from traceval.trace import AgentKind, TraceHeader, TraceStep, TraceWriter
 
 EXAMPLE_SCRIPT = (
@@ -93,3 +95,39 @@ def test_replay_agent_replays_recorded_actions(tmp_path: Path) -> None:
     step2 = agent.act(obs, [])
     assert step2.action is not None and step2.action.kind == "click"
     assert agent.act(obs, []).action is None
+
+
+def _live_model() -> ResolvedModel:
+    return ResolvedModel(provider="mock", model_id="mock-1-20260101", alias="mock-1")
+
+
+def test_live_agent_strips_json_language_tagged_code_fence() -> None:
+    provider = MockProvider(canned_response='```json\n{"kind": "click", "target": "#x"}\n```')
+    agent = LiveAgent(provider, _live_model())
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is not None
+    assert step.action.kind == "click"
+    assert step.action.target == "#x"
+
+
+def test_live_agent_strips_untagged_code_fence() -> None:
+    provider = MockProvider(canned_response='```\n{"kind": "wait", "ms": 0}\n```')
+    agent = LiveAgent(provider, _live_model())
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is not None
+    assert step.action.kind == "wait"
+
+
+def test_live_agent_strips_fence_around_done() -> None:
+    provider = MockProvider(canned_response="```\nDONE\n```")
+    agent = LiveAgent(provider, _live_model())
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is None
+
+
+def test_live_agent_parses_unfenced_action_unchanged() -> None:
+    provider = MockProvider(canned_response='{"kind": "wait", "ms": 0}')
+    agent = LiveAgent(provider, _live_model())
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is not None
+    assert step.action.kind == "wait"
