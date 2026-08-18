@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -6,6 +6,7 @@ import pytest
 from traceval.providers import ResolvedModel
 from traceval.trace import (
     AgentKind,
+    NoPassingTraceFoundError,
     Outcome,
     ScoreResult,
     Trace,
@@ -16,6 +17,7 @@ from traceval.trace import (
     TraceTotals,
     TraceWriter,
     diff_traces,
+    find_last_passing_trace,
     read_trace,
 )
 
@@ -187,3 +189,102 @@ def test_diff_detects_length_mismatch() -> None:
     assert diff.first_divergence is not None
     assert diff.first_divergence.index == 1
     assert diff.first_divergence.action_a is None
+
+
+def _write_full_trace(
+    path: Path,
+    *,
+    task_hash: str = "sha256:deadbeef",
+    outcome: Outcome = Outcome.SUCCESS,
+    started_at: datetime,
+    run_id: str | None = None,
+) -> None:
+    header = _header(task_hash=task_hash, started_at=started_at, run_id=run_id or path.stem)
+    footer = TraceFooter(
+        outcome=outcome,
+        total_steps=1,
+        totals=TraceTotals(
+            input_tokens=10, output_tokens=5, agent_latency_ms=10.0, env_latency_ms=2.5
+        ),
+        ended_at=started_at,
+    )
+    with TraceWriter(path) as writer:
+        writer.write_header(header)
+        writer.write_step(_step(0))
+        writer.write_footer(footer)
+
+
+def test_find_last_passing_trace_picks_most_recent_by_started_at(tmp_path: Path) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    target = tmp_path / "target.jsonl"
+    _write_full_trace(target, outcome=Outcome.FAILURE, started_at=base)
+    older = tmp_path / "older.jsonl"
+    _write_full_trace(older, started_at=base - timedelta(hours=2))
+    newest = tmp_path / "newest.jsonl"
+    _write_full_trace(newest, started_at=base - timedelta(minutes=1))
+    newer_but_not_newest = tmp_path / "middle.jsonl"
+    _write_full_trace(newer_but_not_newest, started_at=base - timedelta(hours=1))
+
+    result = find_last_passing_trace(target, "sha256:deadbeef")
+
+    assert result == newest
+
+
+def test_find_last_passing_trace_ignores_different_task_hash(tmp_path: Path) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    target = tmp_path / "target.jsonl"
+    _write_full_trace(target, outcome=Outcome.FAILURE, started_at=base)
+    other_task = tmp_path / "other_task.jsonl"
+    _write_full_trace(
+        other_task, task_hash="sha256:othertask", started_at=base - timedelta(minutes=1)
+    )
+    matching = tmp_path / "matching.jsonl"
+    _write_full_trace(matching, started_at=base - timedelta(hours=1))
+
+    result = find_last_passing_trace(target, "sha256:deadbeef")
+
+    assert result == matching
+
+
+def test_find_last_passing_trace_ignores_failed_and_errored_traces(tmp_path: Path) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    target = tmp_path / "target.jsonl"
+    _write_full_trace(target, outcome=Outcome.FAILURE, started_at=base)
+    failed = tmp_path / "failed.jsonl"
+    _write_full_trace(failed, outcome=Outcome.FAILURE, started_at=base - timedelta(minutes=1))
+    errored = tmp_path / "errored.jsonl"
+    _write_full_trace(errored, outcome=Outcome.ERROR, started_at=base - timedelta(minutes=2))
+    passing = tmp_path / "passing.jsonl"
+    _write_full_trace(passing, outcome=Outcome.SUCCESS, started_at=base - timedelta(hours=1))
+
+    result = find_last_passing_trace(target, "sha256:deadbeef")
+
+    assert result == passing
+
+
+def test_find_last_passing_trace_raises_when_no_passing_runs_at_all(tmp_path: Path) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    target = tmp_path / "target.jsonl"
+    _write_full_trace(target, outcome=Outcome.FAILURE, started_at=base)
+    failed = tmp_path / "failed.jsonl"
+    _write_full_trace(failed, outcome=Outcome.FAILURE, started_at=base - timedelta(minutes=1))
+
+    with pytest.raises(NoPassingTraceFoundError, match="no trace in this directory has"):
+        find_last_passing_trace(target, "sha256:deadbeef")
+
+
+def test_find_last_passing_trace_raises_when_no_passing_runs_for_this_task_hash(
+    tmp_path: Path,
+) -> None:
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    target = tmp_path / "target.jsonl"
+    _write_full_trace(target, outcome=Outcome.FAILURE, started_at=base)
+    passing_other_task = tmp_path / "other_task.jsonl"
+    _write_full_trace(
+        passing_other_task,
+        task_hash="sha256:othertask",
+        started_at=base - timedelta(minutes=1),
+    )
+
+    with pytest.raises(NoPassingTraceFoundError, match="other tasks have passing runs"):
+        find_last_passing_trace(target, "sha256:deadbeef")

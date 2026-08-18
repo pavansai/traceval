@@ -35,8 +35,12 @@ key), writes a trace to `runs/`, and prints an accuracy/latency/cost report.
 ```sh
 TRACE=$(ls -t runs/*.jsonl | head -1)
 uv run traceval replay "$TRACE" tests/fixtures/tasks/example_search_task
-uv run traceval diff "$TRACE" "$(ls -t runs/*.jsonl | head -1)"
+uv run traceval diff "$TRACE" --against-last-passing
 ```
+
+`--against-last-passing` scans `$TRACE`'s directory for the most recent
+`Outcome.SUCCESS` trace with a matching `task_hash` and diffs against that,
+so you don't have to track down the right trace file by hand.
 
 ### Running against a real model
 

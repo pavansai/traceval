@@ -1,4 +1,12 @@
-from traceval.trace.diff import HeaderDelta, ScoreDelta, StepDivergence, TraceDiff, diff_traces
+from traceval.trace.diff import (
+    HeaderDelta,
+    NoPassingTraceFoundError,
+    ScoreDelta,
+    StepDivergence,
+    TraceDiff,
+    diff_traces,
+    find_last_passing_trace,
+)
 from traceval.trace.reader import TraceSchemaError, iter_trace_lines, read_trace
 from traceval.trace.schema import (
     TRACE_SCHEMA_VERSION,
@@ -20,6 +28,7 @@ __all__ = [
     "TRACE_SCHEMA_VERSION",
     "AgentKind",
     "HeaderDelta",
+    "NoPassingTraceFoundError",
     "Outcome",
     "PricingSnapshot",
     "ScoreDelta",
@@ -36,6 +45,7 @@ __all__ = [
     "TraceTotals",
     "TraceWriter",
     "diff_traces",
+    "find_last_passing_trace",
     "iter_trace_lines",
     "read_trace",
 ]

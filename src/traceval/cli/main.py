@@ -25,7 +25,14 @@ from traceval.runner import run_task
 from traceval.scoring import ExactMatchScorer, ModelGradedScorer, RubricScorer, Scorer, build_report
 from traceval.scoring.report import TaskSetReport
 from traceval.tasks import Task, load_task
-from traceval.trace import AgentKind, Trace, diff_traces, read_trace
+from traceval.trace import (
+    AgentKind,
+    NoPassingTraceFoundError,
+    Trace,
+    diff_traces,
+    find_last_passing_trace,
+    read_trace,
+)
 
 app = typer.Typer(help="Deterministic task runner and scoring harness for agent rollouts.")
 
@@ -246,15 +253,35 @@ def replay(
 @app.command()
 def diff(
     trace_a: Path = typer.Argument(..., help="First trace (e.g. last passing run)"),
-    trace_b: Path = typer.Argument(..., help="Second trace (e.g. a replayed failing run)"),
+    trace_b: Path | None = typer.Argument(
+        None,
+        help="Second trace (e.g. a replayed failing run). Omit when using --against-last-passing.",
+    ),
     allow_different_task: bool = typer.Option(
         False,
         "--allow-different-task",
         help="Diff traces from different tasks anyway (step alignment is meaningless otherwise)",
     ),
+    against_last_passing: bool = typer.Option(
+        False,
+        "--against-last-passing",
+        help="Diff trace_a against the most recent Outcome.SUCCESS trace in its directory "
+        "with a matching task_hash, instead of an explicit trace_b.",
+    ),
 ) -> None:
     """Show the structured, step-aligned diff between two traces."""
     a = read_trace(trace_a)
+
+    if against_last_passing:
+        if trace_b is not None:
+            raise typer.BadParameter("pass either trace_b or --against-last-passing, not both")
+        try:
+            trace_b = find_last_passing_trace(trace_a, a.header.task_hash)
+        except NoPassingTraceFoundError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    elif trace_b is None:
+        raise typer.BadParameter("trace_b is required unless --against-last-passing is given")
+
     b = read_trace(trace_b)
     result = diff_traces(a, b, a_path=str(trace_a), b_path=str(trace_b))
 
