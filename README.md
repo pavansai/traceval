@@ -51,55 +51,55 @@ uv run traceval run tests/fixtures/tasks/example_search_task \
 The only thing that actually demonstrates this harness has evaluated a real
 model: all four tasks under `tasks/`, run live against `claude-haiku-4-5`
 (Anthropic), scored by a real judge (same model) for the one `model_graded`
-task. Run 2026-08-18; total cost **$0.0032**.
+task. Run 2026-08-18; total cost **$0.0042**.
 
 ```
 $ uv run traceval run tasks/ \
     --agent live --provider anthropic --model claude-haiku-4-5 \
     --judge-provider anthropic --judge-model claude-haiku-4-5
 
-feedback_form: success -> runs/6d0d265f63b34389885be35f0b77a86e.jsonl
-login_form: failure -> runs/486a623339394955bc1b4679df46a5f3.jsonl
-newsletter_signup: error (LiveAgentResponseError: model response was not a
-  valid action or DONE: "I'll help you complete this newsletter signup
-  task. Let me start by examining the form and filling in the email
-  field.\n\n{\"kind\": \"click\", \"target\": \"#email\"}") -> runs/a1e662cd31a84e3fa89586c466b6a814.jsonl
-todo_list: failure -> runs/accb8f7b79274fa697a0af820957ac43.jsonl
-runs: 4 (success=1 failure=2 error=1)
-  exact_match: accuracy=0% mean_score=0.000
-  model_graded: accuracy=100% mean_score=1.000
-  rubric: accuracy=0% mean_score=0.500
-agent latency: p50=3149.4ms p95=4656.9ms
-env latency: p50=179.5ms p95=190.2ms
-tokens: input=2145 output=203
-cost: $0.0032
+feedback_form: failure -> runs/5fc02268612948519534b0c25948b9ea.jsonl
+login_form: success -> runs/cd5b8258405f4792bd6a71301e44b598.jsonl
+newsletter_signup: success -> runs/3c7fe2b671ee49b4806aa51d91ea4be1.jsonl
+todo_list: success -> runs/07f2307deaa545d98f764a0d250a2220.jsonl
+runs: 4 (success=3 failure=1 error=0)
+  exact_match: accuracy=100% mean_score=1.000
+  model_graded: accuracy=0% mean_score=0.000
+  rubric: accuracy=100% mean_score=1.000
+agent latency: p50=2458.6ms p95=4762.0ms
+env latency: p50=164.8ms p95=258.0ms
+tokens: input=2824 output=274
+cost: $0.0042
 ```
 
-This is pasted as-is, including the failures: a curated all-green run would
-prove less. Two real, distinct findings came out of it, both still open:
+This is pasted as-is, including the failure: a curated all-green run would
+prove less. This run is the same four tasks against the same model as the
+previous sample above, after two fixes: a required `goal` field on every
+task (`TASK_FORMAT_VERSION` 3) and balanced-JSON-object extraction in
+`LiveAgent` (see CHANGELOG). Both of the previous run's findings are gone:
+`login_form` and `todo_list` now pass once the model was actually told what
+the task wanted, and `newsletter_signup` now parses its JSON action correctly
+despite the model's conversational preamble.
 
-- **`login_form`/`todo_list` fail, not error: the harness ran correctly, the
-  model just had no way to know what to type.** `exact_match` on
-  `login_form` requires the exact string `"alice"`; `rubric` on `todo_list`
-  requires an item containing `"milk"`. `LiveAgent` never sends the model a
-  task-specific goal, only the generic action-protocol instructions plus
-  the current page, so a real model reasonably fills in a plausible generic
-  value (`"testuser"`, `"Buy groceries"`) instead of the one specific string
-  the task happens to check for. `feedback_form` passes because it's graded
-  qualitatively (any plausible feedback text), so it never needed this.
-  There's currently no field in `task.yaml` for a live agent's goal.
-- **`newsletter_signup` errors on a JSON-parsing edge case distinct from
-  the markdown-fence bug already fixed**: the model prefixed its JSON
-  action with conversational text ("I'll help you complete this... Let me
-  start by...") instead of wrapping it in a code fence, so
-  `_strip_code_fence` (anchored to match only a fence around the *entire*
-  response) correctly left it alone, and `json.loads` failed on the mixed
-  prose-plus-JSON string.
+One new, real, still-open finding came out of this run:
 
-A committed example trace (the successful `feedback_form` run above, full
-schema, real tokens/cost/judge rationale) lives at
-[`examples/`](examples/) so the format is readable without running
-anything.
+- **`feedback_form` fails on real model behavior, not a harness bug.** The
+  judge's rationale: "The agent repeatedly clicked on the feedback textarea
+  without ever typing any text into it or clicking the submit button, so no
+  positive feedback was entered or submitted." The trace shows exactly that:
+  five `click` actions on `#feedback`, the task's `max_steps` limit, never a
+  `type` action and never a click on `#submit`. The goal and
+  `observe_selectors` are both correct and complete here, so this isn't a
+  harness defect, it's the harness doing its job: a live sample this small
+  now surfaces real agent-scaffold/model brittleness (the model stalling on
+  a click-only loop) instead of a harness bug standing in the way of ever
+  seeing it.
+
+A committed example trace (a `feedback_form` success from an earlier run,
+before this session's fixes, full schema, real tokens/cost/judge rationale)
+lives at [`examples/`](examples/) so the format is readable without running
+anything; it predates the fixes above and no longer matches this run's
+result for that task.
 
 ## Architecture
 

@@ -65,3 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key, this path had never actually executed until `scripts/smoke_live.py`
   first ran against a live model and hit it on turn one. Fixed by stripping
   a fence that wraps the entire response before parsing.
+- `LiveAgent` failed whenever a real model added any conversational
+  preamble before its JSON action (e.g. "I'll help you complete this
+  newsletter signup task. Let me start by..."), since the code-fence fix
+  above still parsed the (fence-stripped) content as JSON directly, and
+  prose before the object isn't valid JSON. Surfaced by the four-task live
+  sample run, where `newsletter_signup` errored on exactly this. Fixed by
+  scanning for the first balanced `{...}` object in the response instead
+  of parsing the whole string; code-fence stripping is kept (still needed
+  to recognize a fenced `DONE`, which has no JSON object to find). On
+  failure, `LiveAgentResponseError` now includes the model's raw,
+  unprocessed response rather than the fence-stripped content, so an
+  unparseable response is diagnosable from the trace error alone.

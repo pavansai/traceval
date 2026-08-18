@@ -29,12 +29,49 @@ DEFAULT_SYSTEM_PROMPT = (
 # else; this was never exercised before scripts/smoke_live.py first ran
 # against a real model and hit it immediately. Only strips a fence that
 # wraps the entire response, so it never touches a plain unfenced action.
+# Kept for the DONE path: a fenced ```DONE``` has no JSON object for
+# _extract_first_json_object to find, so it needs this to be recognized.
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
 
 
 def _strip_code_fence(content: str) -> str:
     match = _CODE_FENCE_RE.match(content)
     return match.group(1) if match else content
+
+
+def _extract_first_json_object(content: str) -> str | None:
+    """Scan for the first balanced {...} object, ignoring braces inside
+    string literals. Real models routinely precede requested JSON with
+    conversational preamble ("I'll help you complete this... Let me start
+    by...") even when told to reply with nothing else, so parsing
+    `content` directly as JSON breaks on the first real model response
+    that includes any prose at all.
+    """
+    start = content.find("{")
+    while start != -1:
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(content)):
+            ch = content[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return content[start : i + 1]
+        start = content.find("{", start + 1)
+    return None
 
 
 class LiveAgentResponseError(ValueError):
@@ -58,14 +95,18 @@ class LiveAgent:
         messages = self._build_messages(observation, history)
         response = self._provider.generate(self._resolved_model, messages)
         usage = AgentUsage(input_tokens=response.input_tokens, output_tokens=response.output_tokens)
-        content = _strip_code_fence(response.content.strip())
-        if content == "DONE":
+        raw = response.content
+        stripped = _strip_code_fence(raw.strip())
+        if stripped == "DONE":
             return AgentStep(action=None, usage=usage, agent_latency_ms=response.latency_ms)
+        json_text = _extract_first_json_object(stripped)
+        if json_text is None:
+            raise LiveAgentResponseError(f"model response was not a valid action or DONE: {raw!r}")
         try:
-            action = Action.model_validate(json.loads(content))
+            action = Action.model_validate(json.loads(json_text))
         except (json.JSONDecodeError, ValueError) as exc:
             raise LiveAgentResponseError(
-                f"model response was not a valid action or DONE: {content!r}"
+                f"model response was not a valid action or DONE: {raw!r}"
             ) from exc
         return AgentStep(action=action, usage=usage, agent_latency_ms=response.latency_ms)
 
