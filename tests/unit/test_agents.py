@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from traceval.agents.live import LiveAgent
+from traceval.agents.live import LiveAgent, LiveAgentResponseError
 from traceval.agents.oracle import OracleAgent, ScriptedTrajectoryDivergedError
 from traceval.agents.replay import ReplayAgent
 from traceval.environments import Observation
@@ -131,3 +131,47 @@ def test_live_agent_parses_unfenced_action_unchanged() -> None:
     step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
     assert step.action is not None
     assert step.action.kind == "wait"
+
+
+def test_live_agent_extracts_json_from_fenced_response() -> None:
+    provider = MockProvider(canned_response='```json\n{"kind": "click", "target": "#x"}\n```')
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is not None
+    assert step.action.kind == "click"
+    assert step.action.target == "#x"
+
+
+def test_live_agent_extracts_json_after_prose_preamble() -> None:
+    provider = MockProvider(
+        canned_response=(
+            "I'll help you complete this newsletter signup task. Let me start by "
+            'examining the form and filling in the email field.\n\n{"kind": "click", '
+            '"target": "#email"}'
+        )
+    )
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is not None
+    assert step.action.kind == "click"
+    assert step.action.target == "#email"
+
+
+def test_live_agent_extracts_json_from_prose_then_fenced_block() -> None:
+    provider = MockProvider(
+        canned_response=(
+            'I\'ll click the button now.\n\n```json\n{"kind": "click", "target": "#submit"}\n```'
+        )
+    )
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
+    step = agent.act(Observation(url="file:///x", title="t", elements={}), [])
+    assert step.action is not None
+    assert step.action.kind == "click"
+    assert step.action.target == "#submit"
+
+
+def test_live_agent_raises_with_raw_response_on_unparseable_output() -> None:
+    provider = MockProvider(canned_response="I'm not able to help with that request.")
+    agent = LiveAgent(provider, _live_model(), goal="Do the thing.")
+    with pytest.raises(LiveAgentResponseError, match="not able to help with that request"):
+        agent.act(Observation(url="file:///x", title="t", elements={}), [])
