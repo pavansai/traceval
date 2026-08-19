@@ -85,3 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure, `LiveAgentResponseError` now includes the model's raw,
   unprocessed response rather than the fence-stripped content, so an
   unparseable response is diagnosable from the trace error alone.
+- CI's Node 20 deprecation annotation, by bumping `actions/checkout` v4 to
+  v7, `actions/cache` v4 to v6, and `astral-sh/setup-uv` v3 to v10 (pinned
+  by commit SHA per astral-sh's own README recommendation). All three had
+  fallen behind the Node 24 runner GitHub Actions now uses.
