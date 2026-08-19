@@ -1,0 +1,36 @@
+# --- Intentionally unachievable task ---
+# This task cannot be passed by any agent, however capable, by design: see
+# fixture.html. It exists as a regression signal for the harness itself,
+# not for the model under test. A benchmark where every task is passable
+# can't distinguish a working scorer from a lenient one; this task's
+# `Outcome` must always be `failure` (never `success`, which would mean
+# the scorer or environment silently broke; never `error`, since every
+# action here completes cleanly and an unmet goal is the correct, expected
+# result, not a harness malfunction).
+id: unrecoverable_account
+format_version: 3
+seed: 909
+max_steps: 3
+
+goal: "Recover access to the account by entering the one-time verification code sent to your registered email."
+
+environment:
+  kind: browser
+  config:
+    fixture_file: fixture.html
+    observe_selectors: ["#otp", "#verify", "#status"]
+    viewport: { width: 1280, height: 800 }
+    locale: en-US
+    timezone_id: UTC
+
+fixture_files:
+  - fixture.html
+  - scripted_trajectory.jsonl
+
+expected: "verified"
+
+scorers:
+  - kind: exact_match
+    config:
+      target: "#status"
+      expected: "verified"

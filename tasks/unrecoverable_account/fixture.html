@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Account Recovery Fixture</title>
+  </head>
+  <body>
+    <input id="otp" type="text" />
+    <button id="verify" type="button">Verify</button>
+    <div id="status"></div>
+    <script>
+      // The correct one-time code is never rendered anywhere in this
+      // document, there is no email client in this environment to receive
+      // it, and no server round-trip echoes it back: it is deliberately
+      // unknowable to anything that can only read this page. #verify
+      // always rejects, no matter what #otp contains.
+      document.getElementById("verify").addEventListener("click", function () {
+        document.getElementById("status").textContent = "invalid code";
+      });
+    </script>
+  </body>
+</html>
