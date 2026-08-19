@@ -105,6 +105,60 @@ lives at [`examples/`](examples/) so the format is readable without running
 anything; it predates the fixes above and no longer matches this run's
 result for that task.
 
+## Why structured traces matter
+
+The `feedback_form` failure above is a better argument for this project than
+the feature list is, because it shows what a structured trace buys you that
+a pass/fail number alone doesn't: the difference between "the harness is
+broken" and "the model did something dumb" is answered by reading the trace,
+not by re-running anything or adding print statements.
+
+The trace's five steps are all the same action:
+
+```
+$ uv run python -c "
+from pathlib import Path
+from traceval.trace import read_trace
+t = read_trace(Path('runs/5fc02268612948519534b0c25948b9ea.jsonl'))
+for s in t.steps:
+    print(s.index, s.action)
+"
+0 {'kind': 'click', 'target': '#feedback', ...}
+1 {'kind': 'click', 'target': '#feedback', ...}
+2 {'kind': 'click', 'target': '#feedback', ...}
+3 {'kind': 'click', 'target': '#feedback', ...}
+4 {'kind': 'click', 'target': '#feedback', ...}
+```
+
+Five clicks on the same textarea, never a `type`, never a click on
+`#submit`, and the run stopping at exactly `task.yaml`'s `max_steps: 5`.
+That sequence alone rules out a harness bug: `#feedback` and `#submit` are
+both in `observe_selectors` (the model could see both), the goal field
+states the task plainly ("Leave positive feedback about the product using
+the feedback form"), and `LiveAgentResponseError` never appears in the
+footer, so every one of the model's five responses parsed as a valid
+action. The model chose to click the same thing five times in a row. The
+judge's independently-generated rationale, stored in the trace footer,
+says the same thing without having been told any of the above: "The agent
+repeatedly clicked on the feedback textarea without ever typing any text
+into it or clicking the submit button, so no positive feedback was entered
+or submitted." Two independent signals (the raw action sequence and the
+judge's read of it) agree, and both are sitting in one committed file,
+inspectable without rerunning anything or spending API budget again.
+
+The same trace is also replayable exactly:
+
+```sh
+uv run traceval replay runs/5fc02268612948519534b0c25948b9ea.jsonl tasks/feedback_form \
+    --judge-provider anthropic --judge-model claude-haiku-4-5
+```
+
+`ReplayAgent` reissues the recorded five clicks verbatim (no model call, no
+API key needed for the agent side), which is what makes it possible to,
+say, change the `model_graded` rubric prompt or fix a scorer bug and see
+whether *that* changes the verdict on this exact trajectory, without paying
+to regenerate the trajectory itself.
+
 ## Architecture
 
 See [`docs/architecture.md`](docs/architecture.md) for the protocol contracts
