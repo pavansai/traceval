@@ -1,0 +1,2 @@
+{"expect": {"elements": {"#otp": "", "#status": ""}}, "action": {"kind": "type", "target": "#otp", "value": "000000"}}
+{"expect": {"elements": {"#otp": "000000", "#status": ""}}, "action": {"kind": "click", "target": "#verify"}}

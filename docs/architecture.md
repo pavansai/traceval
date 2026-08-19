@@ -273,6 +273,16 @@ be checked against the exact task definition that produced it.
 4. `uv run traceval run tests/fixtures/tasks/<name> --agent oracle` to
    verify it passes with no model involved.
 
+`tasks/unrecoverable_account` is a deliberate exception to step 4: it's
+designed to never pass, by any agent. A task set where every task is
+passable can't distinguish a working scorer from a lenient one, so a
+known-failing task is a useful regression signal in its own right. Its
+`scripted_trajectory.jsonl` still runs cleanly (every action succeeds, no
+`expect` mismatch), so its `Outcome` is always `failure`, never `error`;
+`error` there would mean the harness itself broke, not that the goal went
+unmet. See the comment at the top of its `task.yaml` for why it's built
+that way.
+
 ## Adding a provider
 
 Implement `Provider` (`resolve_model`, `generate`) in

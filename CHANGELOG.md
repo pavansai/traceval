@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   around. Refuses clearly when no candidate exists, and distinguishes
   "no passing runs in this directory at all" from "passing runs exist,
   just not for this task_hash", since those call for different next steps.
+- `tasks/unrecoverable_account`: a fifth real task, deliberately
+  unwinnable by any agent (see the comment at the top of its `task.yaml`).
+  A task set where every task is passable can't distinguish a working
+  scorer from a lenient one, so this is a regression signal for the
+  harness itself, not a capability being measured. Its actions all
+  complete cleanly, so its `Outcome` is always `failure`, never `error`.
 
 ### Changed
 

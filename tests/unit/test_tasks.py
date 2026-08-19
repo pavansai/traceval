@@ -131,7 +131,7 @@ def test_all_real_tasks_pass_selector_validation() -> None:
     original bug).
     """
     task_dirs = sorted(p for p in REPO_TASKS_DIR.iterdir() if (p / "task.yaml").exists())
-    assert len(task_dirs) >= 4
+    assert len(task_dirs) >= 5
     for task_dir in task_dirs:
         task = load_task(task_dir)
         assert task.format_version == 3

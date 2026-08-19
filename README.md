@@ -53,51 +53,56 @@ uv run traceval run tests/fixtures/tasks/example_search_task \
 ## Sample run
 
 The only thing that actually demonstrates this harness has evaluated a real
-model: all four tasks under `tasks/`, run live against `claude-haiku-4-5`
+model: all five tasks under `tasks/`, run live against `claude-haiku-4-5`
 (Anthropic), scored by a real judge (same model) for the one `model_graded`
-task. Run 2026-08-18; total cost **$0.0042**.
+task. Run 2026-08-19; total cost **$0.0058**.
 
 ```
 $ uv run traceval run tasks/ \
     --agent live --provider anthropic --model claude-haiku-4-5 \
     --judge-provider anthropic --judge-model claude-haiku-4-5
 
-feedback_form: failure -> runs/5fc02268612948519534b0c25948b9ea.jsonl
-login_form: success -> runs/cd5b8258405f4792bd6a71301e44b598.jsonl
-newsletter_signup: success -> runs/3c7fe2b671ee49b4806aa51d91ea4be1.jsonl
-todo_list: success -> runs/07f2307deaa545d98f764a0d250a2220.jsonl
-runs: 4 (success=3 failure=1 error=0)
-  exact_match: accuracy=100% mean_score=1.000
+feedback_form: failure -> runs/769f5536856c49658a4f9c9976e3ba4b.jsonl
+login_form: success -> runs/516f75352c374d15b37f18638d119da1.jsonl
+newsletter_signup: success -> runs/0873b3136ab44c318c162e080819d51b.jsonl
+todo_list: success -> runs/27380471ea3641d4aabd6b55460e64d2.jsonl
+unrecoverable_account: failure -> runs/d0193a3fd0274939aed5cee9d3762b36.jsonl
+runs: 5 (success=3 failure=2 error=0)
+  exact_match: accuracy=67% mean_score=0.667
   model_graded: accuracy=0% mean_score=0.000
   rubric: accuracy=100% mean_score=1.000
-agent latency: p50=2458.6ms p95=4762.0ms
-env latency: p50=164.8ms p95=258.0ms
-tokens: input=2824 output=274
-cost: $0.0042
+agent latency: p50=2295.6ms p95=4046.6ms
+env latency: p50=140.1ms p95=174.8ms
+tokens: input=3436 output=468
+cost: $0.0058
 ```
 
-This is pasted as-is, including the failure: a curated all-green run would
-prove less. This run is the same four tasks against the same model as the
-previous sample above, after two fixes: a required `goal` field on every
-task (`TASK_FORMAT_VERSION` 3) and balanced-JSON-object extraction in
-`LiveAgent` (see CHANGELOG). Both of the previous run's findings are gone:
-`login_form` and `todo_list` now pass once the model was actually told what
-the task wanted, and `newsletter_signup` now parses its JSON action correctly
-despite the model's conversational preamble.
-
-One new, real, still-open finding came out of this run:
+This is pasted as-is, including both failures: a curated all-green run
+would prove less. `login_form`, `newsletter_signup`, and `todo_list` all
+pass, the two fixes documented in the previous version of this table (a
+`goal` field and balanced-JSON extraction, see CHANGELOG) hold up on a
+fresh run. Two failures are expected and still open, for two different
+reasons:
 
 - **`feedback_form` fails on real model behavior, not a harness bug.** The
   judge's rationale: "The agent repeatedly clicked on the feedback textarea
-  without ever typing any text into it or clicking the submit button, so no
-  positive feedback was entered or submitted." The trace shows exactly that:
-  five `click` actions on `#feedback`, the task's `max_steps` limit, never a
-  `type` action and never a click on `#submit`. The goal and
-  `observe_selectors` are both correct and complete here, so this isn't a
-  harness defect, it's the harness doing its job: a live sample this small
-  now surfaces real agent-scaffold/model brittleness (the model stalling on
-  a click-only loop) instead of a harness bug standing in the way of ever
-  seeing it.
+  but never typed any text into it and never clicked the submit button."
+  The trace shows exactly that: five `click` actions on `#feedback`, the
+  task's `max_steps` limit, never a `type` action and never a click on
+  `#submit`. The goal and `observe_selectors` are both correct and
+  complete here, so this isn't a harness defect, it's the harness doing
+  its job: a live sample this small surfaces real agent-scaffold/model
+  brittleness (the model stalling on a click-only loop) instead of a
+  harness bug standing in the way of ever seeing it.
+- **`unrecoverable_account` fails by design, every time, for every
+  agent.** It's a fifth task with no scripted correct answer: `#verify`
+  always rejects, no matter what's typed into `#otp`, because the correct
+  one-time code is never rendered anywhere the agent can read it. This
+  isn't a finding, it's a regression check: a task set where every task is
+  passable can't tell a working scorer from a lenient one that rubber-stamps
+  everything. `exact_match`'s 67% (not 100%) accuracy above is this task
+  correctly failing, not a capability gap in the model. See
+  [`tasks/unrecoverable_account/task.yaml`](tasks/unrecoverable_account/task.yaml).
 
 A committed example trace (a `feedback_form` success from an earlier run,
 before this session's fixes, full schema, real tokens/cost/judge rationale)
@@ -119,7 +124,7 @@ The trace's five steps are all the same action:
 $ uv run python -c "
 from pathlib import Path
 from traceval.trace import read_trace
-t = read_trace(Path('runs/5fc02268612948519534b0c25948b9ea.jsonl'))
+t = read_trace(Path('runs/769f5536856c49658a4f9c9976e3ba4b.jsonl'))
 for s in t.steps:
     print(s.index, s.action)
 "
@@ -140,16 +145,16 @@ footer, so every one of the model's five responses parsed as a valid
 action. The model chose to click the same thing five times in a row. The
 judge's independently-generated rationale, stored in the trace footer,
 says the same thing without having been told any of the above: "The agent
-repeatedly clicked on the feedback textarea without ever typing any text
-into it or clicking the submit button, so no positive feedback was entered
-or submitted." Two independent signals (the raw action sequence and the
-judge's read of it) agree, and both are sitting in one committed file,
-inspectable without rerunning anything or spending API budget again.
+repeatedly clicked on the feedback textarea but never typed any text into
+it and never clicked the submit button." Two independent signals (the raw
+action sequence and the judge's read of it) agree, and both are sitting in
+one committed file, inspectable without rerunning anything or spending API
+budget again.
 
 The same trace is also replayable exactly:
 
 ```sh
-uv run traceval replay runs/5fc02268612948519534b0c25948b9ea.jsonl tasks/feedback_form \
+uv run traceval replay runs/769f5536856c49658a4f9c9976e3ba4b.jsonl tasks/feedback_form \
     --judge-provider anthropic --judge-model claude-haiku-4-5
 ```
 

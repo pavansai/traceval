@@ -41,6 +41,7 @@ EXAMPLE_TASK_DIR = (
     Path(__file__).resolve().parents[1] / "fixtures" / "tasks" / "example_search_task"
 )
 RANDOM_TASK_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "tasks" / "random_dom_task"
+REPO_TASKS_DIR = Path(__file__).resolve().parents[2] / "tasks"
 
 
 def _model() -> ResolvedModel:
@@ -119,6 +120,33 @@ def test_oracle_run_produces_valid_trace(tmp_path: Path) -> None:
     assert len(reloaded.steps) == len(trace.steps)
     assert reloaded.footer is not None
     assert reloaded.footer.outcome == Outcome.SUCCESS
+
+
+def test_unrecoverable_account_task_fails_without_erroring(tmp_path: Path) -> None:
+    """`tasks/unrecoverable_account` is intentionally unwinnable: a
+    regression signal for the harness itself, since a benchmark where every
+    task is passable can't distinguish a working scorer from a lenient one.
+    Its actions must all complete cleanly (Outcome.ERROR would mean the
+    harness broke) and its scorer must correctly report the goal as unmet
+    (Outcome.SUCCESS would mean the scorer or environment silently broke).
+    """
+    task_dir = REPO_TASKS_DIR / "unrecoverable_account"
+    task = load_task(task_dir)
+
+    trace = run_task(
+        task=task,
+        agent=OracleAgent(task_dir / "scripted_trajectory.jsonl"),
+        agent_kind=AgentKind.ORACLE,
+        model_under_test=_model(),
+        scorers=[ExactMatchScorer()],
+        trace_dir=tmp_path,
+    )
+
+    assert trace.footer is not None
+    assert trace.footer.error is None
+    assert trace.footer.scorer_errors == []
+    assert trace.footer.outcome == Outcome.FAILURE
+    assert all(not score.passed for score in trace.footer.scores)
 
 
 def test_live_agent_path_produces_nonzero_totals_and_cost(tmp_path: Path) -> None:
